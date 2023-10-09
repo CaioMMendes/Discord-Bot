@@ -13,12 +13,18 @@
   "dependencies": {
     "@discordjs/voice": "^0.16.0",
     "discord.js": "^14.9.0",
-    "dotenv": "^16.0.3"
+    "dotenv": "^16.0.3",
+    "ffmpeg-static": "^5.1.0",
+    "puppeteer": "^19.10.0",
+    "queue": "^7.0.0",
+    "stream": "^0.0.2",
+    "ytdl-core": "^4.11.5"
   },
   "devDependencies": {
     "@discordjs/builders": "^1.6.1",
     "@discordjs/rest": "^1.7.0",
     "discord-api-types": "^0.37.38",
-    "nodemon": "^2.0.22"
+    "nodemon": "^2.0.22",
+    "tsx": "^3.12.7"
   }
 }

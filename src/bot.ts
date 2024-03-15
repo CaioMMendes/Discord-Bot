@@ -6,9 +6,10 @@ import dotenv from "dotenv";
 // import ping from "./ping";
 
 import { config } from "./config";
-import { registerCommands } from "./commands/register-commands";
+import { registerCommands } from "./utils/register-commands";
 import { interactions } from "./interactions/interactions";
-import { refreshCommands } from "./commands/refresh-commands";
+import { refreshCommands } from "./utils/refresh-commands";
+import { Player } from "discord-player";
 
 dotenv.config();
 const { prefix, token } = config();
@@ -21,6 +22,7 @@ const client = new Client({
     IntentsBitField.Flags.GuildIntegrations,
     IntentsBitField.Flags.GuildEmojisAndStickers,
     IntentsBitField.Flags.GuildMessageReactions,
+    IntentsBitField.Flags.GuildVoiceStates,
   ],
 });
 
@@ -28,16 +30,27 @@ const client = new Client({
 //   version: "9",
 // }).setToken(token);
 
+client.player = new Player(client, {
+  ytdlOptions: {
+    quality: "highestaudio",
+    highWaterMark: 1 << 25,
+  },
+});
+
 client.once("ready", async (e) => {
   console.log(`😁 ${e.user.tag} is online`);
-  await refreshCommands();
+  await refreshCommands({ client });
 
   await registerCommands({ client });
   // await rest.put(Routes.applicationGuildCommands(clientId, guildId), {
   //   body: commands.map((command) => command?.data?.toJSON()),
   // });
 
-  console.log("Comandos registrados com sucesso!");
+  // console.log("Comandos registrados com sucesso!");
+});
+
+client.on("interactionCreate", (interaction) => {
+  interactions({ interaction, client });
 });
 
 // const commands = [require("./ping")];
@@ -63,10 +76,6 @@ client.on("message", async (message) => {
     const connection = await message.member.voice.channel.join();
     message.channel.send("Estou conectado à sua sala de voz!");
   }
-});
-
-client.on("interactionCreate", (interaction) => {
-  interactions({ interaction });
 });
 
 const palavrasChave = [

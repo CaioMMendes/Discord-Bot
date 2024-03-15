@@ -1,33 +1,29 @@
-import { CacheType, Interaction } from "discord.js";
+import { CacheType, Client, Interaction } from "discord.js";
 
 type IteractionsType = {
   interaction: Interaction<CacheType>;
+  client: Client<boolean>;
 };
 
-export const interactions = async ({ interaction }: IteractionsType) => {
+export const interactions = async ({
+  interaction,
+  client,
+}: IteractionsType) => {
   if (!interaction.isCommand()) return;
   const { commandName, options } = interaction;
 
-  if (commandName === "pituim-oi") {
-    // Respondendo ao comando
-    return interaction.reply("Oi!");
+  const command = client.commands.get(commandName);
+  try {
+    await command.execute({ client, interaction });
+  } catch (error) {
+    console.log(error);
+    await interaction.reply("Ocorreu um erro ao tentar executar este comando.");
   }
-  if (commandName === "join") {
-    if (commandName === "join") {
-      // Verifica se o usuário selecionou uma sala de voz
-      const voiceChannelOption = options.get("channel");
-      if (!voiceChannelOption || !voiceChannelOption.isVoiceChannel()) {
-        return interaction.reply({
-          content: "Por favor, selecione uma sala de voz para eu entrar.",
-          ephemeral: true, // Mensagem visível apenas para o autor da interação
-        });
-      }
-
-      const voiceChannel = voiceChannelOption.channel;
-
-      // Conecta o bot à sala de voz selecionada pelo usuário
-      const connection = await voiceChannel.join();
-      await interaction.reply("Estou conectado à sala de voz selecionada!");
-    }
-  }
+  // if (commandName === "pituim-oi") {
+  //   // Respondendo ao comando
+  //   return interaction.reply("Oi!");
+  // }
+  // if (commandName === "join") {
+  //   console.log("aaaaaaaaaaaaa");
+  // }
 };

@@ -6,7 +6,10 @@ type RegisterCommandsType = { client: Client<boolean> };
 export const registerCommands = async ({ client }: RegisterCommandsType) => {
   if (client.application) {
     try {
-      // await client.application.commands.create(commandsList);
+      // for (const command of commandsList) {
+      //   await client.application.commands.create(command);
+      //   console.log(command);
+      // }
     } catch (error) {
       console.log(error);
     }

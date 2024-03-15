@@ -8,14 +8,26 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "tsx watch src/bot.ts"
   },
+  "engines": {
+    "node": "<18.18.0"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@discordjs/voice": "^0.16.0",
+    "@discordjs/builders": "^1.7.0",
+    "@discordjs/opus": "^0.9.0",
+    "@discordjs/rest": "^1.7.1",
+    "@discordjs/voice": "^0.16.1",
+    "@ffmpeg/ffmpeg": "^0.12.10",
+    "@ffmpeg/util": "^0.12.1",
+    "discord-api-types": "^0.37.74",
+    "discord-player": "^6.6.7",
     "discord.js": "^14.14.1",
     "dotenv": "^16.0.3",
+    "fast-glob": "^3.3.2",
     "ffmpeg-static": "^5.1.0",
+    "glob": "^10.3.10",
     "puppeteer": "^19.10.0",
     "queue": "^7.0.0",
     "stream": "^0.0.2",
@@ -23,9 +35,6 @@
     "ytdl-core": "^4.11.5"
   },
   "devDependencies": {
-    "@discordjs/builders": "^1.7.0",
-    "@discordjs/rest": "^1.7.1",
-    "discord-api-types": "^0.37.38",
     "tsx": "^3.14.0"
   }
 }

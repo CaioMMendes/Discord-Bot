@@ -36,6 +36,7 @@ client.player = new Player(client, {
     highWaterMark: 1 << 25,
   },
 });
+client.player.extractors.loadDefault();
 
 client.once("ready", async (e) => {
   console.log(`😁 ${e.user.tag} is online`);

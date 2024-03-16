@@ -28,7 +28,7 @@ export const refreshCommands = async ({ client }: RefreshCommandsType) => {
 
       if (command?.data?.name) {
         client.commands.set(command?.data?.name, command);
-        commands.push(command);
+        commands.push(command.data);
       }
     }
   } catch (error) {
@@ -38,7 +38,6 @@ export const refreshCommands = async ({ client }: RefreshCommandsType) => {
   const rest = new REST({ version: "10" }).setToken(token);
   const guildsIds = client.guilds.cache.map((guild) => guild.id);
   console.log("Started refreshing application (/) commands.");
-  console.log(commands);
 
   for (const guildId of guildsIds) {
     try {

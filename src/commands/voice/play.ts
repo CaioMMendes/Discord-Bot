@@ -1,4 +1,4 @@
-import { QueryType } from "discord-player";
+import { QueryType, QueueRepeatMode } from "discord-player";
 import {
   CacheType,
   Client,
@@ -49,7 +49,7 @@ module.exports = {
         )
     ),
   execute: async ({ client, interaction }: ExecuteType) => {
-    if (!interaction.isCommand()) return;
+    if (!interaction.isChatInputCommand()) return; //todo se der erro voltar para isCommand
     const memberInteraction = interaction?.member as any;
     try {
       if (!memberInteraction?.voice?.channel) {
@@ -65,18 +65,16 @@ module.exports = {
       );
 
       if (!queue.connection)
-        await queue.connect(interaction.member.voice.channel);
+        await queue.connect(memberInteraction.voice.channel);
 
       let embed = new EmbedBuilder();
 
       if (interaction.options.getSubcommand() === "song") {
         let url = interaction.options.getString("url");
-        console.log("url", url);
         const result = await client.player.search(url, {
           requestBy: interaction.user,
           searchEngine: QueryType.YOUTUBE_VIDEO,
         });
-        console.log(result);
         if (result.tracks.length === 0) {
           await interaction.reply("No results found");
           return;
@@ -94,30 +92,42 @@ module.exports = {
           )
           .setThumbnail(song.thumbnail)
           .setFooter({ text: `Duration: ${song?.duration}` });
+
+        if (!queue.playing) {
+          // console.log(await queue.play);
+          // return await queue?.play();
+          return await client.player.play(
+            memberInteraction.voice.channel,
+            queue.tracks.data[queue.tracks.data.length - 1],
+            {
+              nodeOptions: { QueueRepeatMode: 0 },
+            }
+          );
+        }
+      } else if (interaction.options.getSubcommand() === "playlist") {
+        let url = interaction.options.getString("url");
+
+        const result = await client.player.search(url, {
+          requestBy: interaction.user,
+          searchEngine: QueryType.YOUTUBE_PLAYLIST,
+        });
+        console.log(result);
+        if (result.tracks.length === 0) {
+          await interaction.reply("No playlist found");
+          return;
+        }
+
+        const playlist = result.playlist;
+        await queue.addTrack(playlist);
+
+        embed
+          .setDescription(
+            `Added **[${playlist.title}](${playlist.url})** to the queue.`
+          )
+          .setThumbnail(playlist.thumbnail)
+          .setFooter({ text: `Duration: ${playlist.duration}` });
       }
-      //   } else if (interaction.options.getSubcommand() === "playlist") {
-      //     let url = interaction.options.getString("url");
-
-      //     const result = await client.player.search(url, {
-      //       requestBy: interaction.user,
-      //       searchEngine: QueryType.YOUTUBE_PLAYLIST,
-      //     });
-      //     console.log(result);
-      //     if (result.tracks.length === 0) {
-      //       await interaction.reply("No playlist found");
-      //       return;
-      //     }
-
-      //     const playlist = result.playlist;
-      //     await queue.addTracks(playlist);
-
-      //     embed
-      //       .setDescription(
-      //         `Added **[${playlist.title}](${playlist.url})** to the queue.`
-      //       )
-      //       .setThumbnail(playlist.thumbnail)
-      //       .setFooter({ text: `Duration: ${playlist.duration}` });
-      //   } else if (interaction.options.getSubcommand() === "searchterms") {
+      //  else if (interaction.options.getSubcommand() === "searchterms") {
       //     let url = interaction.options.getString("url");
       //     console.log("url", url);
       //     const result = await client.player.search(url, {
@@ -140,10 +150,11 @@ module.exports = {
       //       .setThumbnail(song.thumbnail)
       //       .setFooter({ text: `Duration: ${song.duration}` });
       //   }
-
+      console.log(queue.playing);
       if (!queue.playing) {
-        console.log(queue);
-        return await queue?.play();
+        // console.log(await queue.play);
+        // return await queue?.play();
+        // return await client.player.play(memberInteraction.voice.channel, song);
       }
       //   await interaction.reply({
       //     embeds: [embed],

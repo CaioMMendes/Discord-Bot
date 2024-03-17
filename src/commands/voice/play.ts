@@ -96,11 +96,18 @@ module.exports = {
         if (!queue.playing) {
           // console.log(await queue.play);
           // return await queue?.play();
+          //todo eu to dando um play direito, sem passar o queue, por isso deve ta dando problema
           return await client.player.play(
             memberInteraction.voice.channel,
             queue.tracks.data[queue.tracks.data.length - 1],
             {
-              nodeOptions: { QueueRepeatMode: 0 },
+              audioPlayerOptions: { queue: true },
+              nodeOptions: {
+                repeatMode: 0,
+                leaveOnStop: false,
+                leaveOnEnd: false,
+                volume: 60,
+              },
             }
           );
         }

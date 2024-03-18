@@ -59,10 +59,17 @@ module.exports = {
         return;
       }
 
-      const queue = await client.player.nodes.create(
-        interaction.guild,
-        memberInteraction?.voice?.channel
-      );
+      const queue = await client.player.nodes.create(interaction.guild, {
+        // audioPlayerOptions: { queue: true },
+        // nodeOptions: {
+        repeatMode: QueueRepeatMode.OFF,
+        leaveOnStop: false,
+        leaveOnEnd: false,
+        leaveOnEmpty: true,
+        volume: 60,
+        connectionTimeout: 10000000,
+        // },
+      });
 
       if (!queue.connection)
         await queue.connect(memberInteraction.voice.channel);
@@ -84,7 +91,6 @@ module.exports = {
         console.log("🛺song", song.url);
 
         await queue.addTrack(song);
-        // console.log("💖", queue);
 
         embed
           .setDescription(
@@ -93,22 +99,14 @@ module.exports = {
           .setThumbnail(song.thumbnail)
           .setFooter({ text: `Duration: ${song?.duration}` });
 
-        if (!queue.playing) {
+        if (!queue.isPlaying()) {
           // console.log(await queue.play);
           // return await queue?.play();
           //todo eu to dando um play direito, sem passar o queue, por isso deve ta dando problema
-          return await client.player.play(
+          await client.player.play(
             memberInteraction.voice.channel,
-            queue.tracks.data[queue.tracks.data.length - 1],
-            {
-              audioPlayerOptions: { queue: true },
-              nodeOptions: {
-                repeatMode: 0,
-                leaveOnStop: false,
-                leaveOnEnd: false,
-                volume: 60,
-              },
-            }
+            queue.tracks.data
+            // queue.tracks.data[queue.tracks.data.length - 1],
           );
         }
       } else if (interaction.options.getSubcommand() === "playlist") {
@@ -163,12 +161,13 @@ module.exports = {
         // return await queue?.play();
         // return await client.player.play(memberInteraction.voice.channel, song);
       }
-      //   await interaction.reply({
-      //     embeds: [embed],
-      //   });
+
+      return await interaction.reply({
+        embeds: [embed],
+      });
     } catch (error) {
       console.log(error);
-      await interaction.reply(
+      return await interaction.reply(
         "Ocorreu um erro ao tentar executar este comando."
       );
     }

@@ -6,6 +6,7 @@ import {
   Interaction,
   EmbedBuilder,
 } from "discord.js";
+import { greenColor, redColor } from "../../utils/colors";
 
 type ExecuteType = {
   client: Client<boolean>;
@@ -49,14 +50,20 @@ module.exports = {
         )
     ),
   execute: async ({ client, interaction }: ExecuteType) => {
-    if (!interaction.isChatInputCommand()) return; //todo se der erro voltar para isCommand
+    let embed = new EmbedBuilder();
+    if (!interaction.isChatInputCommand()) {
+      embed.setTitle("❌ Não é um comando de chat.").setColor(redColor);
+      return await interaction.channel!.send({ embeds: [embed] }); //todo se der erro voltar para isCommand
+    }
     const memberInteraction = interaction?.member as any;
     try {
       if (!memberInteraction?.voice?.channel) {
-        await interaction.reply(
-          "Você precisa estar em um canal de voz para usar esse comando"
-        );
-        return;
+        embed
+          .setTitle(
+            "❌ Você precisa estar em um canal de voz para usar esse comando."
+          )
+          .setColor(redColor);
+        return await interaction.reply({ embeds: [embed] });
       }
 
       const queue = await client.player.nodes.create(interaction.guild, {
@@ -67,14 +74,12 @@ module.exports = {
         leaveOnEnd: false,
         leaveOnEmpty: true,
         volume: 60,
-        connectionTimeout: 10000000,
+        // connectionTimeout: 9000000000,
         // },
       });
 
       if (!queue.connection)
         await queue.connect(memberInteraction.voice.channel);
-
-      let embed = new EmbedBuilder();
 
       if (interaction.options.getSubcommand() === "song") {
         let url = interaction.options.getString("url");
@@ -83,8 +88,12 @@ module.exports = {
           searchEngine: QueryType.YOUTUBE_VIDEO,
         });
         if (result.tracks.length === 0) {
-          await interaction.reply("No results found");
-          return;
+          embed
+            .setTitle(
+              `❌ Não foi possivel encontrar uma música nessa url:${url}.`
+            )
+            .setColor(redColor);
+          return await interaction.reply({ embeds: [embed] });
         }
 
         const song = result.tracks[0];
@@ -97,8 +106,10 @@ module.exports = {
             `Added **[${song?.title}](${song?.url})** to the queue.`
           )
           .setThumbnail(song.thumbnail)
-          .setFooter({ text: `Duration: ${song?.duration}` });
+          .setFooter({ text: `Duration: ${song?.duration}` })
+          .setColor(greenColor);
 
+        console.log(queue.tracks.data.length);
         if (!queue.isPlaying()) {
           // console.log(await queue.play);
           // return await queue?.play();
@@ -106,7 +117,6 @@ module.exports = {
           await client.player.play(
             memberInteraction.voice.channel,
             queue.tracks.data
-            // queue.tracks.data[queue.tracks.data.length - 1],
           );
         }
       } else if (interaction.options.getSubcommand() === "playlist") {
@@ -167,9 +177,10 @@ module.exports = {
       });
     } catch (error) {
       console.log(error);
-      return await interaction.reply(
-        "Ocorreu um erro ao tentar executar este comando."
-      );
+      embed
+        .setTitle("❌ Ocorreu um erro ao tentar executar este comando.")
+        .setColor(redColor);
+      return await interaction.reply({ embeds: [embed] });
     }
   },
 };

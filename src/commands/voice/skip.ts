@@ -17,24 +17,37 @@ module.exports = {
     .setName("skip")
     .setDescription("Pula a música atual."),
   execute: async ({ client, interaction }: ExecuteType) => {
-    if (!interaction.isChatInputCommand()) return;
-    const queue = client.player.nodes.get(interaction.guild);
+    if (!interaction.isChatInputCommand())
+      return await interaction.channel!.send("Não é um comando de chat.");
+    try {
+      if (!interaction.isChatInputCommand()) return;
+      const queue = client.player.nodes.get(interaction.guild);
 
-    if (!queue) {
-      await interaction.reply("Não existe nenhum som tocando.");
-      return;
+      const testandoQueue = client.player.nodes.get(queue);
+      console.log(testandoQueue);
+      if (!queue) {
+        await interaction.reply("Não existe nenhum som tocando.");
+        return;
+      }
+      const currentSong = queue.currentTrack;
+      //todo debugar o testando queue para ver se tem o .skip()
+      //todo para passar o nodes.get() ele recebe um node ali eu to passando um guild
+      //   console.log(queue);
+      //   queue.skip();
+      //   client.player.nodes.playerSkip(queue, currentSong);
+
+      return await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setDescription(`Skipped **${currentSong.title}**`)
+            .setThumbnail(currentSong.setThumbnail),
+        ],
+      });
+    } catch (error) {
+      console.log(error);
+      return await interaction.reply(
+        "Ocorreu um erro ao tentar executar este comando."
+      );
     }
-    const currentSong = queue.currentTrack;
-
-    // queue.playerSkip();
-    client.player.nodes.playerSkip(queue, currentSong);
-
-    await interaction.reply({
-      embeds: [
-        new EmbedBuilder()
-          .setDescription(`Skipped **${currentSong.title}**`)
-          .setThumbnail(currentSong.setThumbnail),
-      ],
-    });
   },
 };

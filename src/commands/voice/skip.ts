@@ -25,6 +25,7 @@ module.exports = {
 
       const testandoQueue = client.player.nodes.get(queue);
       console.log(testandoQueue);
+      //todo ver se tem alguma diferença entre o queue e o testando queue
       if (!queue) {
         await interaction.reply("Não existe nenhum som tocando.");
         return;
@@ -32,6 +33,7 @@ module.exports = {
       const currentSong = queue.currentTrack;
       //todo debugar o testando queue para ver se tem o .skip()
       //todo para passar o nodes.get() ele recebe um node ali eu to passando um guild
+
       //   console.log(queue);
       //   queue.skip();
       //   client.player.nodes.playerSkip(queue, currentSong);

@@ -6,7 +6,7 @@ import {
   Interaction,
   EmbedBuilder,
 } from "discord.js";
-import { greenColor, redColor } from "../../utils/colors";
+import { greenColor, redColor, zincColor } from "../../utils/colors";
 
 type ExecuteType = {
   client: Client<boolean>;
@@ -56,6 +56,11 @@ module.exports = {
       return await interaction.channel!.send({ embeds: [embed] }); //todo se der erro voltar para isCommand
     }
     const memberInteraction = interaction?.member as any;
+
+    let embedLoading = new EmbedBuilder();
+    embedLoading.setTitle("Loading...").setColor(zincColor);
+    await interaction.reply({ embeds: [embedLoading] });
+
     try {
       if (!memberInteraction?.voice?.channel) {
         embed
@@ -63,24 +68,21 @@ module.exports = {
             "❌ Você precisa estar em um canal de voz para usar esse comando."
           )
           .setColor(redColor);
-        return await interaction.reply({ embeds: [embed] });
+        return await interaction.editReply({ embeds: [embed] });
       }
 
       const queue = await client.player.nodes.create(interaction.guild, {
-        // audioPlayerOptions: { queue: true },
-        // nodeOptions: {
         repeatMode: QueueRepeatMode.OFF,
         leaveOnStop: false,
         leaveOnEnd: false,
         leaveOnEmpty: true,
         volume: 60,
-        // connectionTimeout: 9000000000,
-        // },
       });
 
       if (!queue.connection)
         await queue.connect(memberInteraction.voice.channel);
 
+      //Song
       if (interaction.options.getSubcommand() === "song") {
         let url = interaction.options.getString("url");
         const result = await client.player.search(url, {
@@ -93,7 +95,7 @@ module.exports = {
               `❌ Não foi possivel encontrar uma música nessa url:${url}.`
             )
             .setColor(redColor);
-          return await interaction.reply({ embeds: [embed] });
+          return await interaction.editReply({ embeds: [embed] });
         }
 
         const song = result.tracks[0];
@@ -114,6 +116,7 @@ module.exports = {
           // console.log(await queue.play);
           // return await queue?.play();
           //todo eu to dando um play direito, sem passar o queue, por isso deve ta dando problema
+          //todo ver se ele tem o metodo de skip
           await client.player.play(
             memberInteraction.voice.channel,
             queue.tracks.data
@@ -128,7 +131,7 @@ module.exports = {
         });
         console.log(result);
         if (result.tracks.length === 0) {
-          await interaction.reply("No playlist found");
+          await interaction.editReply("No playlist found");
           return;
         }
 
@@ -151,7 +154,7 @@ module.exports = {
       //     });
       //     console.log(result);
       //     if (result.tracks.length === 0) {
-      //       await interaction.reply("No results found");
+      //       await interaction.editReply("No results found");
       //       return;
       //     }
 
@@ -172,7 +175,7 @@ module.exports = {
         // return await client.player.play(memberInteraction.voice.channel, song);
       }
 
-      return await interaction.reply({
+      return await interaction.editReply({
         embeds: [embed],
       });
     } catch (error) {
@@ -180,7 +183,7 @@ module.exports = {
       embed
         .setTitle("❌ Ocorreu um erro ao tentar executar este comando.")
         .setColor(redColor);
-      return await interaction.reply({ embeds: [embed] });
+      return await interaction.editReply({ embeds: [embed] });
     }
   },
 };

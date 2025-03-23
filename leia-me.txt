@@ -1,0 +1,10 @@
+Estava dando erro usar o node na versão 20 e instalar a dependencia 
+
+npm i @discordjs/opus
+
+então eu tirei ela, pra instalar ela o node precisa ser antigo
+
+
+  "engines": {
+    "node": "<18.18.0"
+  },

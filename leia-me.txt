@@ -8,3 +8,5 @@ então eu tirei ela, pra instalar ela o node precisa ser antigo
   "engines": {
     "node": "<18.18.0"
   },
+
+  Agora não esta funcionando a parte de tocar musica

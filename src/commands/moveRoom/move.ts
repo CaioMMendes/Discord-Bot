@@ -42,6 +42,18 @@ module.exports = {
             .setDescription("Pessoa que vai sofrer bullying")
             .setRequired(true)
         )
+        .addStringOption((option) =>
+          option
+            .setName("intervalo")
+            .setDescription("intervalo entre movimentações em ex ms(400+)")
+            .setRequired(false)
+        )
+        .addStringOption((option) =>
+          option
+            .setName("tempo")
+            .setDescription("tempo movendo a pessoa ex(5000)")
+            .setRequired(false)
+        )
     ),
 
   execute: async ({ client, interaction }: ExecuteType) => {
@@ -50,9 +62,14 @@ module.exports = {
     const memberInteraction = interaction?.member as any
     let embed = new EmbedBuilder()
     try {
+      const username = interaction.user.username // Nome de usuário
+      const userId = interaction.user.id // ID do usuário
+      console.log(`Comando executado por: ${username} (${userId})`)
       const voiceChannel1 = interaction.options.getChannel("voicechannel1")!
       const voiceChannel2 = interaction.options.getChannel("voicechannel2")!
       const user = interaction.options.getUser("pessoa")!
+      const interval = interaction.options.getString("intervalo")!
+      const time = interaction.options.getString("tempo")!
 
       // Verificar se o membro está em um canal de voz
       const member = await interaction.guild!.members.fetch(user.id)
@@ -63,7 +80,7 @@ module.exports = {
         // return await interaction.reply({ embeds: [embed] })
         return
       }
-
+      console.log(interval, time)
       // Responder que o bullying começou
       // embed
       //   .setTitle("🌀 Iniciando bullying...")
@@ -76,36 +93,42 @@ module.exports = {
       let count = 0
 
       // Criar intervalo para mover entre canais
-      const moveInterval = setInterval(async () => {
-        try {
-          const targetChannel = isFirstChannel ? voiceChannel1 : voiceChannel2
-          await member.voice.setChannel(targetChannel.id)
-          isFirstChannel = !isFirstChannel
-          count++
-        } catch (error) {
-          clearInterval(moveInterval)
-          console.log(error)
-        }
-      }, 400) // Move a cada 500ms
+      const moveInterval = setInterval(
+        async () => {
+          try {
+            const targetChannel = isFirstChannel ? voiceChannel1 : voiceChannel2
+            await member.voice.setChannel(targetChannel.id)
+            isFirstChannel = !isFirstChannel
+            count++
+          } catch (error) {
+            clearInterval(moveInterval)
+            console.log(error)
+          }
+        },
+        interval !== null ? Number(interval) : 400
+      ) // Move a cada 500ms
 
       // Parar após 5 segundos
-      setTimeout(async () => {
-        clearInterval(moveInterval)
+      setTimeout(
+        async () => {
+          clearInterval(moveInterval)
 
-        // Voltar para o canal original
-        try {
-          await member.voice.setChannel(originalChannel)
-        } catch (error) {
-          console.log("Não foi possível retornar ao canal original")
-        }
+          // Voltar para o canal original
+          try {
+            await member.voice.setChannel(originalChannel)
+          } catch (error) {
+            console.log("Não foi possível retornar ao canal original")
+          }
 
-        // Atualizar mensagem
-        // embed
-        //   .setTitle("✅ Bullying completo!")
-        //   .setDescription(`Movimentos realizados: ${count}x`)
-        //   .setColor(greenColor)
-        // await interaction.editReply({ embeds: [embed] })
-      }, 5000)
+          // Atualizar mensagem
+          // embed
+          //   .setTitle("✅ Bullying completo!")
+          //   .setDescription(`Movimentos realizados: ${count}x`)
+          //   .setColor(greenColor)
+          // await interaction.editReply({ embeds: [embed] })
+        },
+        time !== null ? Number(time) : 5000
+      )
     } catch (error) {
       console.log(error)
       return

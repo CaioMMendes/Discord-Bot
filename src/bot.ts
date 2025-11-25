@@ -1,4 +1,7 @@
-import { joinVoiceChannel } from "@discordjs/voice"
+import {
+  DiscordGatewayAdapterCreator,
+  joinVoiceChannel,
+} from "@discordjs/voice"
 import { Client, IntentsBitField, Message } from "discord.js"
 import dotenv from "dotenv"
 // import ping from "./ping";
@@ -153,31 +156,29 @@ client.on("messageCreate", async (message) => {
       // Obtém o ID do usuário a partir da mensagem
       const userId = message.content.split(" ")[1]
       // Obtém o objeto GuildMember correspondente ao ID do usuário
-      const member = message.guild.members.cache.get(`${userId}`)
-      message.guild.members
-        .fetch(`${userId}`)
-        .then((guildMember) => {
-          // obtenha o ping em milissegundos usando a propriedade ping
-          const userPing = guildMember.ping
+      const member = message?.guild?.members.cache.get(`${userId}`)
 
-          // use o ping em uma mensagem
+      ;(message?.guild?.members.fetch(`${userId}`) as any)
+        .then((guildMember: any) => {
+          const userPing = guildMember.ping // TS aceita porque é any
           console.log(userPing)
           return message.channel.send(`O ping do usuário é de ${userPing}ms.`)
         })
         .catch(console.error)
 
       // Acessa informações sobre o membro
-      const username = member.user.username
-      const tag = member.user.tag
-      const joinDate = member.joinedAt
+      const username = member?.user.username
+      const tag = member?.user.tag
+      const joinDate = member?.joinedAt
 
-      const roles = member.roles.cache.map((role) => role.name).join(", ")
+      const roles = member?.roles.cache.map((role) => role.name).join(", ")
       console.log("userid:", userId)
+      return
 
-      // Envie as informações de volta como uma mensagem
-      return message.channel.send(
-        `O usuário ${username}#${tag} tem um ping de ${ping}ms`
-      )
+      // // Envie as informações de volta como uma mensagem
+      // return message.channel.send(
+      //   `O usuário ${username}#${tag} tem um ping de ${"indefinido"}ms`
+      // )
     }
   }
 })
@@ -193,24 +194,24 @@ client.on("messageCreate", async (message) => {
     if (!message.content.startsWith(prefixo) || message.author.bot) return
 
     const args = message.content.slice(prefixo.length).trim().split(" ")
-    const command = args.shift().toLowerCase()
+    const command = args?.shift()?.toLowerCase()
     console.log(command)
     if (command === "say") {
       const text = args.join(" ")
 
       if (
-        message.member.voice.channel.id !== null ||
-        message.member.voice.channel.guild.id !== null
+        message?.member?.voice?.channel?.id !== null ||
+        message?.member?.voice?.channel?.guild.id !== null
       ) {
         const connection = joinVoiceChannel({
-          channelId: message.member.voice.channel.id,
-          guildId: message.member.voice.channel.guild.id,
-          adapterCreator:
-            message.member.voice.channel.guild.voiceAdapterCreator,
+          channelId: message?.member?.voice?.channel?.id as string,
+          guildId: message?.member?.voice?.channel?.guild.id as string,
+          adapterCreator: message?.member?.voice?.channel?.guild
+            .voiceAdapterCreator as DiscordGatewayAdapterCreator,
         })
         const audioBuffer = await textToSpeech(text)
         playAudio(connection, audioBuffer)
-        async function playAudio(connection, url) {
+        async function playAudio(connection: any, url: any) {
           try {
             const stream = ytdl(url, {
               filter: "audioonly",
@@ -247,18 +248,18 @@ client.on("messageCreate", async (message) => {
     }
   }
 
-  async function textToSpeech(text) {
+  async function textToSpeech(text: any) {
     const browser = await puppeteer.launch()
     const page = await browser.newPage()
 
     // Navega até a página Text to Speech
     await page.goto("https://caiommendes.github.io/tts-teste/")
 
-    const audioUrl = await page.evaluate((text) => {
+    const audioUrl = await page.evaluate((text: any) => {
       return new Promise((resolve, reject) => {
         const synth = window.speechSynthesis
-        const utterance = new SpeechSynthesisUtterance(text)
-        const audioChunks = []
+        const utterance = new SpeechSynthesisUtterance(text) as any
+        const audioChunks: any[] = []
 
         utterance.addEventListener("end", () => {
           const blob = new Blob(audioChunks)
@@ -272,7 +273,7 @@ client.on("messageCreate", async (message) => {
 
         synth.speak(utterance)
 
-        utterance.onaudioprocess = (event) => {
+        utterance.onaudioprocess = (event: any) => {
           const channel = event.outputBuffer.getChannelData(0)
           const float32Array = new Float32Array(channel)
 
@@ -300,7 +301,7 @@ client.on("messageCreate", async (message) => {
     // Faça algo com o buffer de áudio (como enviá-lo para um bot no Discord)
   }
 
-  async function createAudioBuffer(audioBuffer) {
+  async function createAudioBuffer(audioBuffer: any) {
     const { Readable } = require("stream")
     const bufferStream = new Readable()
     bufferStream.push(Buffer.from(audioBuffer))

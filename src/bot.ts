@@ -1,19 +1,15 @@
-import {
-  DiscordGatewayAdapterCreator,
-  joinVoiceChannel,
-} from "@discordjs/voice"
-import { Client, IntentsBitField, Message } from "discord.js"
+import { Client, IntentsBitField } from "discord.js"
 import dotenv from "dotenv"
-// import ping from "./ping";
-
 import { Player } from "discord-player"
+import { getVoiceConnection } from "discord-voip"
 import { config } from "./config"
 import { interactions } from "./interactions/interactions"
 import { refreshCommands } from "./utils/refresh-commands"
-import { registerCommands } from "./utils/register-commands"
+import { DefaultExtractors } from "@discord-player/extractor"
 
 dotenv.config()
-const { prefix, token } = config()
+const { token } = config()
+
 const client = new Client({
   intents: [
     IntentsBitField.Flags.Guilds,
@@ -27,56 +23,55 @@ const client = new Client({
   ],
 })
 
-// const rest = new REST({
-//   version: "9",
-// }).setToken(token);
+client.player = new Player(client)
 
-client.player = new Player(client, {
-  ytdlOptions: {
-    quality: "highestaudio",
-    highWaterMark: 1 << 25,
-  },
+client.player.events.on("error", (queue, error) => {
+  console.error(`[player] Erro na fila de ${queue.guild.name}:`, error)
 })
-client.player.extractors.loadDefault()
 
-client.once("ready", async (e) => {
-  console.log(`😁 ${e.user.tag} is online`)
+client.player.events.on("playerError", (queue, error) => {
+  console.error(`[player] Erro ao tocar em ${queue.guild.name}:`, error)
+})
+
+client.player.events.on("audioTrackAdd", (_queue, track) => {
+  console.log(`[player] Track adicionada: ${track.title}`)
+})
+
+client.player.events.on("playerStart", (_queue, track) => {
+  console.log(`[player] Tocando agora: ${track.title}`)
+})
+
+client.once("clientReady", async (e) => {
+  console.log(`\n😁 ${e.user.tag} está online!\n`)
+  await client.player.extractors.loadMulti(DefaultExtractors)
+  const { YoutubeiExtractor } = await import("discord-player-youtubei")
+  await client.player.extractors.register(YoutubeiExtractor, {
+    streamOptions: {
+      useClient: "ANDROID",
+    },
+  })
   await refreshCommands({ client })
-
-  await registerCommands({ client })
-  // await rest.put(Routes.applicationGuildCommands(clientId, guildId), {
-  //   body: commands.map((command) => command?.data?.toJSON()),
-  // });
-
-  // console.log("Comandos registrados com sucesso!");
 })
 
 client.on("interactionCreate", (interaction) => {
   interactions({ interaction, client })
 })
 
-// const commands = [require("./ping")];
+client.on("voiceStateUpdate", (_old, newState) => {
+  if (!newState.guild) return
+  if (client.player.nodes.get(newState.guild.id)) return
 
-// const clientId = process.env.clientId;
-// const guildId = process.env.guildId;
+  const connection = getVoiceConnection(newState.guild.id)
+  if (!connection) return
 
-client.on("message", async (message) => {
-  if (!message.content.startsWith(prefix) || message.author.bot) return
+  const channelId = connection.joinConfig.channelId
+  if (!channelId) return
 
-  const args = message.content.slice(prefix.length).trim().split(/ +/)
-  const command = args.shift().toLowerCase()
+  const channel = newState.guild.channels.cache.get(channelId)
+  if (!channel?.isVoiceBased()) return
 
-  if (command === "join") {
-    // Verifica se o autor da mensagem está em uma sala de voz
-    if (!message.member.voice.channel) {
-      return message.reply(
-        "Você precisa estar em uma sala de voz para eu me conectar!"
-      )
-    }
-
-    // Conecta o bot à sala de voz em que o autor da mensagem está
-    const connection = await message.member.voice.channel.join()
-    message.channel.send("Estou conectado à sua sala de voz!")
+  if (channel.members.filter((m) => !m.user.bot).size === 0) {
+    connection.destroy()
   }
 })
 
@@ -89,224 +84,25 @@ const palavrasChave = [
   "racionais",
 ]
 
-function identificarPalavrasChave(texto: string) {
-  let palavras = texto.toLowerCase().split(" ")
-
-  let palavrasEncontradas = palavras.filter((palavra) =>
-    palavrasChave.includes(palavra)
-  )
-  return palavrasEncontradas
+function identificarPalavrasChave(texto: string): string[] {
+  const palavras = texto.toLowerCase().split(" ")
+  return palavras.filter((palavra) => palavrasChave.includes(palavra))
 }
 
 client.on("messageCreate", async (message) => {
-  const canalTeste = process.env.canalTeste
-  const canalId = process.env.canalId
-  const canalTesteBotCanalId = process.env.canalTesteBotCanalId
+  if (message.author.bot) return
   const canalMusica = process.env.canalMusica
-  console.log(canalMusica)
-  if (message.channel.id === canalMusica) {
-    const responder = (message: Message<boolean>) => {
-      try {
-        let palavrasEncontradas = identificarPalavrasChave(message.content)
-        if (palavrasEncontradas.includes("banheiro")) {
-          let resposta = "cagão"
+  if (!canalMusica || message.channel.id !== canalMusica) return
 
-          message.react("💩")
-          message.reply(`${message.author.username} ${resposta} 💩`)
-        }
+  try {
+    const encontradas = identificarPalavrasChave(message.content)
 
-        if (palavrasEncontradas.includes("racionais")) {
-          message.channel.send(
-            "Proibido tocar esse tipo de música nesse discord 🚫"
-          )
-
-          message.react("🚫")
-        }
-        if (palavrasEncontradas.includes("corno")) {
-          message.channel.send(
-            `${process.env.SLY}, estão falando de você aqui!`
-          )
-
-          message.react("🐂")
-        }
-        if (palavrasEncontradas.includes("cabeçuda")) {
-          message.channel.send(
-            `${process.env.LARISSA}, estão falando de você aqui!`
-          )
-        }
-        if (palavrasEncontradas.includes("tiltado")) {
-          message.channel.send(
-            `${process.env.WOLLIGAN}, estão falando de você aqui!`
-          )
-        }
-        if (palavrasEncontradas.includes("bocó")) {
-          message.channel.send(
-            `${process.env.ZEGOTINHA}, estão falando de você aqui!`
-          )
-        }
-      } catch (err) {
-        console.log(err)
-      }
+    if (encontradas.includes("banheiro")) {
+      message.react("💩")
+      message.reply(`${message.author.username} cagão 💩`)
     }
-    responder(message)
-  }
-  if (message.channel.id === canalTesteBotCanalId) {
-    // Verifica se a mensagem contém um comando para obter informações de um usuário
-    if (message.content.startsWith("+pingPituim")) {
-      // Obtém o ID do usuário a partir da mensagem
-      const userId = message.content.split(" ")[1]
-      // Obtém o objeto GuildMember correspondente ao ID do usuário
-      const member = message?.guild?.members.cache.get(`${userId}`)
-
-      ;(message?.guild?.members.fetch(`${userId}`) as any)
-        .then((guildMember: any) => {
-          const userPing = guildMember.ping // TS aceita porque é any
-          console.log(userPing)
-          return message.channel.send(`O ping do usuário é de ${userPing}ms.`)
-        })
-        .catch(console.error)
-
-      // Acessa informações sobre o membro
-      const username = member?.user.username
-      const tag = member?.user.tag
-      const joinDate = member?.joinedAt
-
-      const roles = member?.roles.cache.map((role) => role.name).join(", ")
-      console.log("userid:", userId)
-      return
-
-      // // Envie as informações de volta como uma mensagem
-      // return message.channel.send(
-      //   `O usuário ${username}#${tag} tem um ping de ${"indefinido"}ms`
-      // )
-    }
-  }
-})
-
-const puppeteer = require("puppeteer")
-const stream = require("stream")
-const ffmpeg = require("ffmpeg-static")
-const ytdl = require("ytdl-core")
-client.on("messageCreate", async (message) => {
-  const canalTesteBotCanalId = process.env.canalTesteBotCanalId
-  const prefixo = "+"
-  if (message.channel.id === canalTesteBotCanalId) {
-    if (!message.content.startsWith(prefixo) || message.author.bot) return
-
-    const args = message.content.slice(prefixo.length).trim().split(" ")
-    const command = args?.shift()?.toLowerCase()
-    console.log(command)
-    if (command === "say") {
-      const text = args.join(" ")
-
-      if (
-        message?.member?.voice?.channel?.id !== null ||
-        message?.member?.voice?.channel?.guild.id !== null
-      ) {
-        const connection = joinVoiceChannel({
-          channelId: message?.member?.voice?.channel?.id as string,
-          guildId: message?.member?.voice?.channel?.guild.id as string,
-          adapterCreator: message?.member?.voice?.channel?.guild
-            .voiceAdapterCreator as DiscordGatewayAdapterCreator,
-        })
-        const audioBuffer = await textToSpeech(text)
-        playAudio(connection, audioBuffer)
-        async function playAudio(connection: any, url: any) {
-          try {
-            const stream = ytdl(url, {
-              filter: "audioonly",
-            })
-            const convertedStream = stream.pipe(
-              ffmpeg({
-                args: [
-                  "-ss",
-                  "0",
-                  "-i",
-                  "-",
-                  "-f",
-                  "s16le",
-                  "-ar",
-                  "48000",
-                  "-ac",
-                  "2",
-                ],
-              })
-            )
-            const dispatcher = connection.play(convertedStream, {
-              type: "converted",
-            })
-            dispatcher.on("finish", () => {
-              console.log("Terminou de tocar o áudio.")
-              connection.disconnect()
-            })
-          } catch (err) {
-            console.error(err)
-            connection.disconnect()
-          }
-        }
-      }
-    }
-  }
-
-  async function textToSpeech(text: any) {
-    const browser = await puppeteer.launch()
-    const page = await browser.newPage()
-
-    // Navega até a página Text to Speech
-    await page.goto("https://caiommendes.github.io/tts-teste/")
-
-    const audioUrl = await page.evaluate((text: any) => {
-      return new Promise((resolve, reject) => {
-        const synth = window.speechSynthesis
-        const utterance = new SpeechSynthesisUtterance(text) as any
-        const audioChunks: any[] = []
-
-        utterance.addEventListener("end", () => {
-          const blob = new Blob(audioChunks)
-          const url = URL.createObjectURL(blob)
-          resolve(url)
-        })
-
-        utterance.addEventListener("error", () => {
-          reject(new Error("Failed to generate speech"))
-        })
-
-        synth.speak(utterance)
-
-        utterance.onaudioprocess = (event: any) => {
-          const channel = event.outputBuffer.getChannelData(0)
-          const float32Array = new Float32Array(channel)
-
-          const int16Array = new Int16Array(float32Array.length)
-          for (let i = 0; i < float32Array.length; i++) {
-            int16Array[i] = Math.floor(float32Array[i] * 32767)
-          }
-
-          const buffer = new ArrayBuffer(int16Array.length * 2)
-          const view = new DataView(buffer)
-
-          int16Array.forEach((value, index) => {
-            view.setInt16(index * 2, value, true)
-          })
-
-          audioChunks.push(buffer)
-        }
-      })
-    }, text)
-
-    // Fecha o navegador
-    await browser.close()
-
-    return audioUrl
-    // Faça algo com o buffer de áudio (como enviá-lo para um bot no Discord)
-  }
-
-  async function createAudioBuffer(audioBuffer: any) {
-    const { Readable } = require("stream")
-    const bufferStream = new Readable()
-    bufferStream.push(Buffer.from(audioBuffer))
-    bufferStream.push(null)
-    return bufferStream
+  } catch (err) {
+    console.error(err)
   }
 })
 

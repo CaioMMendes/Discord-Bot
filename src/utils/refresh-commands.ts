@@ -1,56 +1,49 @@
-import { Client, Collection, REST, Routes } from "discord.js"
-import { config } from "../config"
-import { commandsList } from "./commands-list"
-import path from "node:path"
-import fs from "node:fs"
-const glob = require("glob")
-const fg = require("fast-glob")
+import { Client, Collection, REST, Routes } from "discord.js";
+import { config } from "../config";
+import path from "node:path";
+
+const glob = require("glob");
 
 export type RefreshCommandsType = {
-  client: Client<boolean>
-}
+  client: Client<boolean>;
+};
 
 export const refreshCommands = async ({ client }: RefreshCommandsType) => {
-  const { token, clientId } = config()
-  const commands = []
-  client.commands = new Collection()
+  const { token, clientId } = config();
+  const commands: any[] = [];
+  client.commands = new Collection();
+
   try {
-    const commandsPath = path.normalize(path.join(__dirname, "..", "commands"))
-    const commandFiles = glob.sync(`${commandsPath}/**/*.{js,ts}`)
-    // console.log(commandFiles);
+    const commandsPath = path.normalize(path.join(__dirname, "..", "commands"));
+    const pattern = commandsPath.replace(/\\/g, "/") + "/**/*.{js,ts}";
+    const commandFiles: string[] = glob.sync(pattern);
 
     for (const file of commandFiles) {
-      // console.log(file.split("commands")[1]);
-      // console.log(commandsPath, );
-      const filePath = path.join(commandsPath, file.split("commands")[1])
-      // console.log(filePath);
-      const command = require(filePath)
-
+      const command = require(file);
       if (command?.data?.name) {
-        client.commands.set(command?.data?.name, command)
-        commands.push(command.data)
+        client.commands.set(command.data.name, command);
+        commands.push(command.data.toJSON());
+        console.log(`  /${command.data.name}`);
       }
     }
   } catch (error) {
-    console.log(error)
+    console.error("Erro ao carregar comandos:", error);
   }
 
-  const rest = new REST({ version: "10" }).setToken(token)
-  const guildsIds = client.guilds.cache.map((guild) => guild.id)
-  console.log("Started refreshing application (/) commands.")
+  const rest = new REST({ version: "10" }).setToken(token);
+  const guildIds = client.guilds.cache.map((guild) => guild.id);
 
-  for (const guildId of guildsIds) {
+  console.log(`\nRegistrando ${commands.length} comandos em ${guildIds.length} servidor(es)...`);
+
+  for (const guildId of guildIds) {
     try {
       await rest.put(Routes.applicationGuildCommands(clientId, guildId), {
         body: commands,
-        // body: commandsList,
-      })
+      });
     } catch (error) {
-      console.error(error)
+      console.error(`Erro ao registrar comandos no servidor ${guildId}:`, error);
     }
   }
-  commandsList.map((command) =>
-    console.log(`${command.name}:${command.description}`)
-  )
-  console.log("Successfully reloaded application (/) commands.")
-}
+
+  console.log("Comandos registrados com sucesso!\n");
+};

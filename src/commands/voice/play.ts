@@ -1,160 +1,99 @@
-import { QueryType, QueueRepeatMode } from "discord-player"
+import { QueueRepeatMode } from "discord-player";
 import {
   CacheType,
   Client,
-  SlashCommandBuilder,
-  Interaction,
   EmbedBuilder,
-} from "discord.js"
-import { greenColor, redColor, zincColor } from "../../utils/colors"
+  GuildMember,
+  Interaction,
+  SlashCommandBuilder,
+} from "discord.js";
+import { greenColor, redColor, zincColor } from "../../utils/colors";
 
 type ExecuteType = {
-  client: Client<boolean>
-  interaction: Interaction<CacheType>
-}
-
-//Não pode ter letra maiuscula no name
+  client: Client<boolean>;
+  interaction: Interaction<CacheType>;
+};
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("play")
-    .setDescription("Plays a song.")
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName("search")
-        .setDescription("Searches for a song.")
-        .addStringOption((option) =>
-          option
-            .setName("searchterms")
-            .setDescription("Searches keywords.")
+    .setDescription("Toca uma música no canal de voz.")
+    .addSubcommand((sub) =>
+      sub
+        .setName("buscar")
+        .setDescription("Busca uma música pelo nome.")
+        .addStringOption((opt) =>
+          opt
+            .setName("termo")
+            .setDescription("Nome ou palavra-chave da música")
             .setRequired(true)
         )
     )
-    .addSubcommand((subcommand) =>
-      subcommand
+    .addSubcommand((sub) =>
+      sub
+        .setName("musica")
+        .setDescription("Toca uma música pelo link do YouTube.")
+        .addStringOption((opt) =>
+          opt.setName("url").setDescription("URL da música no YouTube").setRequired(true)
+        )
+    )
+    .addSubcommand((sub) =>
+      sub
         .setName("playlist")
-        .setDescription("Plays playlist from youtube.")
-        .addStringOption((option) =>
-          option.setName("url").setDescription("playlist url").setRequired(true)
-        )
-    )
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName("song")
-        .setDescription("Plays song from youtube.")
-        .addStringOption((option) =>
-          option
-            .setName("url")
-            .setDescription("url of the song")
-            .setRequired(true)
+        .setDescription("Toca uma playlist do YouTube.")
+        .addStringOption((opt) =>
+          opt.setName("url").setDescription("URL da playlist no YouTube").setRequired(true)
         )
     ),
-  execute: async ({ client, interaction }: ExecuteType) => {
-    let embed = new EmbedBuilder()
-    if (!interaction.isChatInputCommand()) {
-      embed.setTitle("❌ Não é um comando de chat.").setColor(redColor)
-      return await interaction.channel!.send({ embeds: [embed] }) //todo se der erro voltar para isCommand
-    }
-    const memberInteraction = interaction?.member as any
 
-    let embedLoading = new EmbedBuilder()
-    embedLoading.setTitle("Loading...").setColor(zincColor)
-    await interaction.reply({ embeds: [embedLoading] })
+  execute: async ({ client, interaction }: ExecuteType) => {
+    if (!interaction.isChatInputCommand()) return;
+
+    const member = interaction.member as GuildMember;
+    const voiceChannel = member?.voice?.channel;
+    const embed = new EmbedBuilder();
+
+    if (!voiceChannel) {
+      embed
+        .setTitle("❌ Você precisa estar em um canal de voz para usar esse comando.")
+        .setColor(redColor);
+      return await interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+
+    const embedLoading = new EmbedBuilder().setTitle("🔍 Buscando...").setColor(zincColor);
+    await interaction.reply({ embeds: [embedLoading] });
+
+    const subcommand = interaction.options.getSubcommand();
+    const query =
+      subcommand === "buscar"
+        ? interaction.options.getString("termo", true)
+        : interaction.options.getString("url", true);
 
     try {
-      if (!memberInteraction?.voice?.channel) {
-        embed
-          .setTitle(
-            "❌ Você precisa estar em um canal de voz para usar esse comando."
-          )
-          .setColor(redColor)
-        return await interaction.editReply({ embeds: [embed] })
-      }
+      const { track } = await client.player.play(voiceChannel, query, {
+        requestedBy: interaction.user,
+        nodeOptions: {
+          volume: 60,
+          leaveOnEmpty: true,
+          leaveOnEnd: false,
+          leaveOnStop: false,
+          repeatMode: QueueRepeatMode.OFF,
+        },
+      });
 
-      const queue = await client.player.nodes.create(interaction.guild, {
-        repeatMode: QueueRepeatMode.OFF,
-        leaveOnStop: false,
-        leaveOnEnd: false,
-        leaveOnEmpty: true,
-        volume: 60,
-      })
-
-      if (!queue.connection)
-        await queue.connect(memberInteraction.voice.channel)
-
-      //Song
-      if (interaction.options.getSubcommand() === "song") {
-        let url = interaction.options.getString("url")
-        const result = await client.player.search(url, {
-          requestBy: interaction.user,
-          searchEngine: QueryType.YOUTUBE_VIDEO,
-        })
-        if (result.tracks.length === 0) {
-          embed
-            .setTitle(
-              `❌ Não foi possivel encontrar uma música nessa url:${url}.`
-            )
-            .setColor(redColor)
-          return await interaction.editReply({ embeds: [embed] })
-        }
-
-        const song = result.tracks[0]
-        console.log("🛺song", song.url)
-
-        await queue.addTrack(song)
-
-        embed
-          .setDescription(
-            `Added **[${song?.title}](${song?.url})** to the queue.`
-          )
-          .setThumbnail(song.thumbnail)
-          .setFooter({ text: `Duration: ${song?.duration}` })
-          .setColor(greenColor)
-
-        console.log("track data length", queue.tracks.data.length)
-        if (!queue.isPlaying()) {
-          // console.log(await queue.play);
-          // return await queue?.play();
-          //todo eu to dando um play direito, sem passar o queue, por isso deve ta dando problema
-          //todo ver se ele tem o metodo de skip
-          await client.player.play(
-            memberInteraction.voice.channel,
-            queue.tracks.data
-          )
-        }
-      } else if (interaction.options.getSubcommand() === "playlist") {
-        let url = interaction.options.getString("url")
-
-        const result = await client.player.search(url, {
-          requestBy: interaction.user,
-          searchEngine: QueryType.YOUTUBE_PLAYLIST,
-        })
-        console.log(result)
-        if (result.tracks.length === 0) {
-          await interaction.editReply("No playlist found")
-          return
-        }
-
-        const playlist = result.playlist
-        await queue.addTrack(playlist)
-
-        embed
-          .setDescription(
-            `Added **[${playlist.title}](${playlist.url})** to the queue.`
-          )
-          .setThumbnail(playlist.thumbnail)
-          .setFooter({ text: `Duration: ${playlist.duration}` })
-      }
-
-      return await interaction.editReply({
-        embeds: [embed],
-      })
-    } catch (error) {
-      console.log(error)
       embed
-        .setTitle("❌ Ocorreu um erro ao tentar executar este comando.")
-        .setColor(redColor)
-      return await interaction.editReply({ embeds: [embed] })
+        .setDescription(`▶️ Adicionado **[${track.title}](${track.url})** à fila.`)
+        .setThumbnail(track.thumbnail)
+        .setFooter({ text: `Duração: ${track.duration} • Pedido por ${interaction.user.displayName}` })
+        .setColor(greenColor);
+
+      return await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+      console.error(error);
+      embed
+        .setTitle("❌ Não foi possível encontrar ou tocar essa música.")
+        .setColor(redColor);
+      return await interaction.editReply({ embeds: [embed] });
     }
   },
-}
+};

@@ -1,141 +1,125 @@
-import { QueryType, QueueRepeatMode } from "discord-player"
 import {
   CacheType,
-  Client,
-  SlashCommandBuilder,
-  Interaction,
-  EmbedBuilder,
   ChannelType,
-} from "discord.js"
-import { greenColor, redColor } from "../../utils/colors"
+  Client,
+  EmbedBuilder,
+  Interaction,
+  SlashCommandBuilder,
+} from "discord.js";
+import { greenColor, redColor } from "../../utils/colors";
 
 type ExecuteType = {
-  client: Client<boolean>
-  interaction: Interaction<CacheType>
-}
+  client: Client<boolean>;
+  interaction: Interaction<CacheType>;
+};
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName("bullying")
-    .setDescription("Do something.")
-    .addSubcommand((subcommand) =>
-      subcommand
-        .setName("move")
-        .setDescription("Acordar alguém.")
-        .addChannelOption((option) =>
-          option
-            .setName("voicechannel1")
-            .setDescription("Primeiro canal de voz")
-            .setRequired(true)
-            .addChannelTypes(ChannelType.GuildVoice)
-        )
-        .addChannelOption((option) =>
-          option
-            .setName("voicechannel2")
-            .setDescription("Segundo canal de voz")
-            .setRequired(true)
-            .addChannelTypes(ChannelType.GuildVoice)
-        )
-        .addUserOption((option) =>
-          option
-            .setName("pessoa")
-            .setDescription("Pessoa que vai sofrer bullying")
-            .setRequired(true)
-        )
-        .addStringOption((option) =>
-          option
-            .setName("intervalo")
-            .setDescription("intervalo entre movimentações em ex ms(400+)")
-            .setRequired(false)
-        )
-        .addStringOption((option) =>
-          option
-            .setName("tempo")
-            .setDescription("tempo movendo a pessoa ex(5000)")
-            .setRequired(false)
-        )
+    .setName("mover")
+    .setDescription("Move um usuário entre dois canais de voz repetidamente.")
+    .addUserOption((option) =>
+      option.setName("pessoa").setDescription("Usuário a ser movido").setRequired(true)
+    )
+    .addChannelOption((option) =>
+      option
+        .setName("canal1")
+        .setDescription("Primeiro canal de voz")
+        .setRequired(true)
+        .addChannelTypes(ChannelType.GuildVoice)
+    )
+    .addChannelOption((option) =>
+      option
+        .setName("canal2")
+        .setDescription("Segundo canal de voz")
+        .setRequired(true)
+        .addChannelTypes(ChannelType.GuildVoice)
+    )
+    .addIntegerOption((option) =>
+      option
+        .setName("intervalo")
+        .setDescription("Intervalo entre movimentações em ms (padrão: 400)")
+        .setRequired(false)
+        .setMinValue(200)
+        .setMaxValue(5000)
+    )
+    .addIntegerOption((option) =>
+      option
+        .setName("duracao")
+        .setDescription("Duração total em ms (padrão: 5000)")
+        .setRequired(false)
+        .setMinValue(1000)
+        .setMaxValue(30000)
     ),
 
   execute: async ({ client, interaction }: ExecuteType) => {
-    if (!interaction.isChatInputCommand())
-      return await interaction.channel!.send("Não é um comando de chat.") //todo se der erro voltar para isCommand
-    const memberInteraction = interaction?.member as any
-    let embed = new EmbedBuilder()
+    if (!interaction.isChatInputCommand()) return;
+
+    const embed = new EmbedBuilder();
+    const user = interaction.options.getUser("pessoa", true);
+    const canal1 = interaction.options.getChannel("canal1", true);
+    const canal2 = interaction.options.getChannel("canal2", true);
+    const interval = interaction.options.getInteger("intervalo") ?? 400;
+    const duration = interaction.options.getInteger("duracao") ?? 5000;
+
     try {
-      const username = interaction.user.username // Nome de usuário
-      const userId = interaction.user.id // ID do usuário
-      console.log(`Comando executado por: ${username} (${userId})`)
-      const voiceChannel1 = interaction.options.getChannel("voicechannel1")!
-      const voiceChannel2 = interaction.options.getChannel("voicechannel2")!
-      const user = interaction.options.getUser("pessoa")!
-      const interval = interaction.options.getString("intervalo")!
-      const time = interaction.options.getString("tempo")!
+      const member = await interaction.guild!.members.fetch(user.id);
 
-      // Verificar se o membro está em um canal de voz
-      const member = await interaction.guild!.members.fetch(user.id)
       if (!member.voice.channel) {
-        // embed
-        //   .setTitle("⚠️ O usuário precisa estar em um canal de voz!")
-        //   .setColor(redColor)
-        // return await interaction.reply({ embeds: [embed] })
-        return
+        embed
+          .setTitle("❌ O usuário precisa estar em um canal de voz!")
+          .setColor(redColor);
+        return await interaction.reply({ embeds: [embed], ephemeral: true });
       }
-      console.log(interval, time)
-      // Responder que o bullying começou
-      // embed
-      //   .setTitle("🌀 Iniciando bullying...")
-      //   .setDescription(`Movendo ${user.username} entre canais por 5 segundos!`)
-      //   .setColor(greenColor)
-      // await interaction.reply({ embeds: [embed] })
 
-      let originalChannel = member.voice.channel
-      let isFirstChannel = true
-      let count = 0
+      const originalChannel = member.voice.channel;
+      let isFirstChannel = true;
+      let count = 0;
 
-      // Criar intervalo para mover entre canais
-      const moveInterval = setInterval(
-        async () => {
-          try {
-            const targetChannel = isFirstChannel ? voiceChannel1 : voiceChannel2
-            await member.voice.setChannel(targetChannel.id)
-            isFirstChannel = !isFirstChannel
-            count++
-          } catch (error) {
-            clearInterval(moveInterval)
-            console.log(error)
-          }
-        },
-        interval !== null ? Number(interval) : 400
-      ) // Move a cada 500ms
+      embed
+        .setTitle("🌀 Bullying iniciado!")
+        .setDescription(
+          `Movendo **${user.username}** entre canais por ${duration / 1000}s.`
+        )
+        .setColor(greenColor);
 
-      // Parar após 5 segundos
-      setTimeout(
-        async () => {
-          clearInterval(moveInterval)
+      await interaction.reply({ embeds: [embed] });
 
-          // Voltar para o canal original
-          try {
-            await member.voice.setChannel(originalChannel)
-          } catch (error) {
-            console.log("Não foi possível retornar ao canal original")
-          }
+      const moveInterval = setInterval(async () => {
+        try {
+          const targetChannel = isFirstChannel ? canal1 : canal2;
+          await member.voice.setChannel(targetChannel.id);
+          isFirstChannel = !isFirstChannel;
+          count++;
+        } catch {
+          clearInterval(moveInterval);
+        }
+      }, interval);
 
-          // Atualizar mensagem
-          // embed
-          //   .setTitle("✅ Bullying completo!")
-          //   .setDescription(`Movimentos realizados: ${count}x`)
-          //   .setColor(greenColor)
-          // await interaction.editReply({ embeds: [embed] })
-        },
-        time !== null ? Number(time) : 5000
-      )
+      setTimeout(async () => {
+        clearInterval(moveInterval);
+
+        try {
+          await member.voice.setChannel(originalChannel);
+        } catch {
+          // Canal original pode não estar mais disponível
+        }
+
+        const embedFim = new EmbedBuilder()
+          .setTitle("✅ Bullying concluído!")
+          .setDescription(`**${user.username}** foi movido **${count}x**.`)
+          .setColor(greenColor);
+
+        await interaction.editReply({ embeds: [embedFim] });
+      }, duration);
     } catch (error) {
-      console.log(error)
-      return
-      // embed
-      //   .setTitle("❌ Ocorreu um erro ao tentar executar este comando.")
-      //   .setColor(redColor)
-      // return await interaction.reply({ embeds: [embed] })
+      console.error(error);
+      embed
+        .setTitle("❌ Ocorreu um erro ao executar o comando.")
+        .setColor(redColor);
+      if (interaction.replied) {
+        return await interaction.editReply({ embeds: [embed] });
+      }
+      return await interaction.reply({ embeds: [embed], ephemeral: true });
     }
   },
-}
+};

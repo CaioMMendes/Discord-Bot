@@ -1,29 +1,28 @@
-import { CacheType, Client, Interaction } from "discord.js";
+import { CacheType, Client, EmbedBuilder, Interaction } from "discord.js";
+import { redColor } from "../utils/colors";
 
-type IteractionsType = {
+type InteractionsType = {
   interaction: Interaction<CacheType>;
   client: Client<boolean>;
 };
 
-export const interactions = async ({
-  interaction,
-  client,
-}: IteractionsType) => {
-  if (!interaction.isCommand()) return;
-  const { commandName, options } = interaction;
+export const interactions = async ({ interaction, client }: InteractionsType) => {
+  if (!interaction.isChatInputCommand()) return;
 
-  const command = client.commands.get(commandName);
+  const command = client.commands.get(interaction.commandName);
+  if (!command) return;
+
   try {
     await command.execute({ client, interaction });
   } catch (error) {
-    console.log(error);
-    await interaction.reply("Ocorreu um erro ao tentar executar este comando.");
+    console.error(error);
+    const embed = new EmbedBuilder()
+      .setTitle("❌ Ocorreu um erro ao executar este comando.")
+      .setColor(redColor);
+    if (interaction.replied || interaction.deferred) {
+      await interaction.editReply({ embeds: [embed] });
+    } else {
+      await interaction.reply({ embeds: [embed] });
+    }
   }
-  // if (commandName === "pituim-oi") {
-  //   // Respondendo ao comando
-  //   return interaction.reply("Oi!");
-  // }
-  // if (commandName === "join") {
-  //   console.log("aaaaaaaaaaaaa");
-  // }
 };

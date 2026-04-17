@@ -1,11 +1,11 @@
-import { QueryType, QueueRepeatMode } from "discord-player";
 import {
   CacheType,
   Client,
-  SlashCommandBuilder,
-  Interaction,
   EmbedBuilder,
+  Interaction,
+  SlashCommandBuilder,
 } from "discord.js";
+import { greenColor, redColor } from "../../utils/colors";
 
 type ExecuteType = {
   client: Client<boolean>;
@@ -16,40 +16,26 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName("skip")
     .setDescription("Pula a música atual."),
+
   execute: async ({ client, interaction }: ExecuteType) => {
-    if (!interaction.isChatInputCommand())
-      return await interaction.channel!.send("Não é um comando de chat.");
-    try {
-      if (!interaction.isChatInputCommand()) return;
-      const queue = client.player.nodes.get(interaction.guild);
+    if (!interaction.isChatInputCommand()) return;
 
-      const testandoQueue = client.player.nodes.get(queue);
-      console.log(testandoQueue);
-      //todo ver se tem alguma diferença entre o queue e o testando queue
-      if (!queue) {
-        await interaction.reply("Não existe nenhum som tocando.");
-        return;
-      }
-      const currentSong = queue.currentTrack;
-      //todo debugar o testando queue para ver se tem o .skip()
-      //todo para passar o nodes.get() ele recebe um node ali eu to passando um guild
+    const embed = new EmbedBuilder();
+    const queue = client.player.nodes.get(interaction.guildId!);
 
-      //   console.log(queue);
-      //   queue.skip();
-      //   client.player.nodes.playerSkip(queue, currentSong);
-
-      return await interaction.reply({
-        embeds: [
-          new EmbedBuilder()
-            .setDescription(`Skipped **${currentSong.title}**`)
-            .setThumbnail(currentSong.setThumbnail),
-        ],
-      });
-    } catch (error) {
-      console.log(error);
-      return await interaction.reply(
-        "Ocorreu um erro ao tentar executar este comando."
-      );
+    if (!queue || !queue.isPlaying()) {
+      embed.setTitle("❌ Não há nenhuma música tocando.").setColor(redColor);
+      return await interaction.reply({ embeds: [embed], ephemeral: true });
     }
+
+    const currentTrack = queue.currentTrack!;
+    queue.node.skip();
+
+    embed
+      .setDescription(`⏭️ Pulou **[${currentTrack.title}](${currentTrack.url})**.`)
+      .setThumbnail(currentTrack.thumbnail)
+      .setColor(greenColor);
+
+    return await interaction.reply({ embeds: [embed] });
   },
 };

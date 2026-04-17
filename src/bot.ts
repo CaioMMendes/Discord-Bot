@@ -44,12 +44,6 @@ client.player.events.on("playerStart", (_queue, track) => {
 client.once("clientReady", async (e) => {
   console.log(`\n😁 ${e.user.tag} está online!\n`)
   await client.player.extractors.loadMulti(DefaultExtractors)
-  const { YoutubeiExtractor } = await import("discord-player-youtubei")
-  await client.player.extractors.register(YoutubeiExtractor, {
-    streamOptions: {
-      useClient: "ANDROID",
-    },
-  })
   await refreshCommands({ client })
 })
 

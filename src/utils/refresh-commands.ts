@@ -19,11 +19,19 @@ export const refreshCommands = async ({ client }: RefreshCommandsType) => {
     const commandFiles: string[] = glob.sync(pattern);
 
     for (const file of commandFiles) {
-      const command = require(file);
-      if (command?.data?.name) {
-        client.commands.set(command.data.name, command);
-        commands.push(command.data.toJSON());
-        console.log(`  /${command.data.name}`);
+      try {
+        const command = require(file);
+        if (command?.data?.name) {
+          if (client.commands.has(command.data.name)) {
+            console.warn(`  Ignorando duplicata: /${command.data.name} (${path.basename(file)})`);
+            continue;
+          }
+          client.commands.set(command.data.name, command);
+          commands.push(command.data.toJSON());
+          console.log(`  /${command.data.name}`);
+        }
+      } catch (error) {
+        console.warn(`  Aviso: falha ao carregar ${path.basename(file)}:`, (error as Error).message);
       }
     }
   } catch (error) {

@@ -37,15 +37,18 @@ interface MyInstantsResult {
   sound: string;
 }
 
-function fetchHtml(url: string): Promise<string> {
+function fetchHtml(url: string, timeoutMs = 2500): Promise<string> {
   return new Promise((resolve, reject) => {
-    https
-      .get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
-        let data = "";
-        res.on("data", (chunk) => (data += chunk));
-        res.on("end", () => resolve(data));
-      })
-      .on("error", reject);
+    const req = https.get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
+      let data = "";
+      res.on("data", (chunk) => (data += chunk));
+      res.on("end", () => resolve(data));
+    });
+    req.on("error", reject);
+    req.setTimeout(timeoutMs, () => {
+      req.destroy();
+      reject(new Error("fetchHtml timeout"));
+    });
   });
 }
 
@@ -153,7 +156,7 @@ module.exports = {
         createdConnection = true;
       }
 
-      await entersState(connection, VoiceConnectionStatus.Ready, 10_000);
+      await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
 
       const resource = createAudioResource(stream, {
         inputType: StreamType.Arbitrary,
@@ -163,7 +166,7 @@ module.exports = {
       connection.subscribe(audioPlayer);
       audioPlayer.play(resource);
 
-      await entersState(audioPlayer, AudioPlayerStatus.Playing, 10_000);
+      await entersState(audioPlayer, AudioPlayerStatus.Playing, 15_000);
 
       embed.setTitle(`🔊 Tocando: **${nomeExibido}**`).setColor(greenColor);
       await interaction.editReply({ embeds: [embed] });

@@ -12,6 +12,7 @@ import {
   getVoiceConnection,
 } from "discord-voip";
 import {
+  AutocompleteInteraction,
   CacheType,
   Client,
   EmbedBuilder,
@@ -26,10 +27,46 @@ type ExecuteType = {
   interaction: Interaction<CacheType>;
 };
 
+type AutocompleteType = {
+  client: Client<boolean>;
+  interaction: AutocompleteInteraction;
+};
+
+interface MyInstantsResult {
+  name: string;
+  sound: string;
+}
+
+function fetchHtml(url: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    https
+      .get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
+        let data = "";
+        res.on("data", (chunk) => (data += chunk));
+        res.on("end", () => resolve(data));
+      })
+      .on("error", reject);
+  });
+}
+
+function parseInstants(html: string): MyInstantsResult[] {
+  const soundRx = /play\('(\/media\/sounds\/[^']+)',\s*'[^']+',\s*'[^']+'\)/g;
+  const nameRx = /class="instant-link[^"]*">([^<]+)<\/a>/g;
+
+  const sounds: string[] = [];
+  const names: string[] = [];
+
+  let m: RegExpExecArray | null;
+  while ((m = soundRx.exec(html)) !== null) sounds.push(m[1]);
+  while ((m = nameRx.exec(html)) !== null) names.push(m[1].trim());
+
+  return sounds.map((sound, i) => ({ name: names[i] ?? sound, sound }));
+}
+
 function fetchStream(url: string): Promise<http.IncomingMessage> {
   return new Promise((resolve, reject) => {
     const get = url.startsWith("https") ? https.get : http.get;
-    get(url, (res) => {
+    get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
       if (res.statusCode === 301 || res.statusCode === 302) {
         fetchStream(res.headers.location!).then(resolve).catch(reject);
       } else if (res.statusCode === 200) {
@@ -48,11 +85,34 @@ module.exports = {
     .addStringOption((option) =>
       option
         .setName("nome")
-        .setDescription("Nome do efeito (ex: vine-boom, bruh, among-us)")
+        .setDescription("Pesquise o nome do efeito sonoro")
         .setRequired(true)
+        .setAutocomplete(true)
     ),
 
-  execute: async ({ client, interaction }: ExecuteType) => {
+  autocomplete: async ({ interaction }: AutocompleteType) => {
+    const termo = interaction.options.getFocused().trim();
+    if (!termo) return interaction.respond([]);
+
+    try {
+      const query = encodeURIComponent(termo);
+      const html = await fetchHtml(
+        `https://www.myinstants.com/en/search/?name=${query}`
+      );
+
+      const instants = parseInstants(html).slice(0, 25);
+      const sugestoes = instants.map((item) => ({
+        name: item.name.slice(0, 100),
+        value: `https://www.myinstants.com${item.sound}`,
+      }));
+
+      await interaction.respond(sugestoes);
+    } catch {
+      await interaction.respond([]);
+    }
+  },
+
+  execute: async ({ interaction }: ExecuteType) => {
     if (!interaction.isChatInputCommand()) return;
 
     const member = interaction.member as GuildMember;
@@ -66,13 +126,12 @@ module.exports = {
       return await interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
-    const nome = interaction.options
-      .getString("nome", true)
-      .toLowerCase()
-      .trim()
-      .replace(/ /g, "-");
+    const valor = interaction.options.getString("nome", true);
+    const url = valor.startsWith("https://")
+      ? valor
+      : `https://www.myinstants.com/media/sounds/${valor.toLowerCase().trim().replace(/ /g, "-")}.mp3`;
 
-    const url = `https://www.myinstants.com/media/sounds/${nome}.mp3`;
+    const nomeExibido = url.split("/").pop()?.replace(".mp3", "") ?? valor;
 
     await interaction.deferReply();
 
@@ -80,7 +139,6 @@ module.exports = {
     let createdConnection = false;
 
     try {
-      // Busca o stream antes de entrar na sala, para validar que o som existe
       const stream = await fetchStream(url);
 
       if (!connection) {
@@ -105,7 +163,7 @@ module.exports = {
 
       await entersState(audioPlayer, AudioPlayerStatus.Playing, 10_000);
 
-      embed.setTitle(`🔊 Tocando: **${nome}**`).setColor(greenColor);
+      embed.setTitle(`🔊 Tocando: **${nomeExibido}**`).setColor(greenColor);
       await interaction.editReply({ embeds: [embed] });
 
       audioPlayer.on(AudioPlayerStatus.Idle, () => {
@@ -123,7 +181,7 @@ module.exports = {
       console.error("[som] Erro:", error);
       if (createdConnection) connection?.destroy();
       embed
-        .setTitle(`❌ Não foi possível tocar **${nome}**.`)
+        .setTitle(`❌ Não foi possível tocar **${nomeExibido}**.`)
         .setDescription(`Verifique o nome em [myinstants.com](https://www.myinstants.com).`)
         .setColor(redColor);
       return await interaction.editReply({ embeds: [embed] });

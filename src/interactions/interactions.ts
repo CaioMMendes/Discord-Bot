@@ -7,6 +7,17 @@ type InteractionsType = {
 };
 
 export const interactions = async ({ interaction, client }: InteractionsType) => {
+  if (interaction.isAutocomplete()) {
+    const command = client.commands.get(interaction.commandName);
+    if (!command?.autocomplete) return;
+    try {
+      await command.autocomplete({ client, interaction });
+    } catch (error) {
+      console.error("[autocomplete] Erro:", error);
+    }
+    return;
+  }
+
   if (!interaction.isChatInputCommand()) return;
 
   const command = client.commands.get(interaction.commandName);

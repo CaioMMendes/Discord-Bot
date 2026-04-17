@@ -116,12 +116,14 @@ module.exports = {
     if (!interaction.isChatInputCommand()) return;
 
     const member = interaction.member as GuildMember;
-    const voiceChannel = member?.voice?.channel;
+    const userChannel = member?.voice?.channel;
     const embed = new EmbedBuilder();
 
-    if (!voiceChannel) {
+    const existingConnection = getVoiceConnection(interaction.guildId!);
+
+    if (!userChannel && !existingConnection) {
       embed
-        .setTitle("❌ Você precisa estar em um canal de voz para usar esse comando.")
+        .setTitle("❌ Você precisa estar em um canal de voz ou o bot precisa já estar em um.")
         .setColor(redColor);
       return await interaction.reply({ embeds: [embed], ephemeral: true });
     }
@@ -135,7 +137,7 @@ module.exports = {
 
     await interaction.deferReply();
 
-    let connection = getVoiceConnection(interaction.guildId!);
+    let connection = existingConnection;
     let createdConnection = false;
 
     try {
@@ -143,7 +145,7 @@ module.exports = {
 
       if (!connection) {
         connection = joinVoiceChannel({
-          channelId: voiceChannel.id,
+          channelId: userChannel!.id,
           guildId: interaction.guildId!,
           adapterCreator: interaction.guild!.voiceAdapterCreator,
           selfDeaf: true,
@@ -169,7 +171,7 @@ module.exports = {
       audioPlayer.on(AudioPlayerStatus.Idle, () => {
         audioPlayer.stop();
         if (!createdConnection) return;
-        const hasMembers = voiceChannel.members.some((m) => !m.user.bot);
+        const hasMembers = userChannel?.members.some((m) => !m.user.bot) ?? false;
         if (!hasMembers) connection?.destroy();
       });
 

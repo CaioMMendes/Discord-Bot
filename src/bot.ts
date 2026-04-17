@@ -57,11 +57,15 @@ client.on("interactionCreate", (interaction) => {
   interactions({ interaction, client })
 })
 
+const idleTimers = new Map<string, NodeJS.Timeout>()
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000
+
 client.on("voiceStateUpdate", (_old, newState) => {
   if (!newState.guild) return
   if (client.player.nodes.get(newState.guild.id)) return
 
-  const connection = getVoiceConnection(newState.guild.id)
+  const guildId = newState.guild.id
+  const connection = getVoiceConnection(guildId)
   if (!connection) return
 
   const channelId = connection.joinConfig.channelId
@@ -70,8 +74,22 @@ client.on("voiceStateUpdate", (_old, newState) => {
   const channel = newState.guild.channels.cache.get(channelId)
   if (!channel?.isVoiceBased()) return
 
-  if (channel.members.filter((m) => !m.user.bot).size === 0) {
-    connection.destroy()
+  const isEmpty = channel.members.filter((m) => !m.user.bot).size === 0
+
+  if (isEmpty) {
+    if (!idleTimers.has(guildId)) {
+      const timer = setTimeout(() => {
+        getVoiceConnection(guildId)?.destroy()
+        idleTimers.delete(guildId)
+      }, IDLE_TIMEOUT_MS)
+      idleTimers.set(guildId, timer)
+    }
+  } else {
+    const existing = idleTimers.get(guildId)
+    if (existing) {
+      clearTimeout(existing)
+      idleTimers.delete(guildId)
+    }
   }
 })
 

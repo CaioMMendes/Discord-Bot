@@ -1,5 +1,7 @@
 import { CacheType, Client, EmbedBuilder, Interaction } from "discord.js";
 import { redColor } from "../utils/colors";
+import { handleSoundButton } from "./sound-button";
+import { SOUND_BUTTON_PREFIX } from "../utils/sound-panel";
 
 type InteractionsType = {
   interaction: Interaction<CacheType>;
@@ -14,6 +16,15 @@ export const interactions = async ({ interaction, client }: InteractionsType) =>
       await command.autocomplete({ client, interaction });
     } catch (error) {
       console.error("[autocomplete] Erro:", error);
+    }
+    return;
+  }
+
+  if (interaction.isButton() && interaction.customId.startsWith(SOUND_BUTTON_PREFIX)) {
+    try {
+      await handleSoundButton({ client, interaction });
+    } catch (error) {
+      console.error("[sound-button] Erro:", error);
     }
     return;
   }

@@ -6,6 +6,8 @@ import { config } from "./config"
 import { interactions } from "./interactions/interactions"
 import { refreshCommands } from "./utils/refresh-commands"
 import { AttachmentExtractor } from "@discord-player/extractor"
+import { syncPanels } from "./utils/sound-panel"
+import { handleUpload } from "./utils/handle-upload"
 
 dotenv.config()
 const { token } = config()
@@ -45,6 +47,13 @@ client.once("clientReady", async (e) => {
   console.log(`\n😁 ${e.user.tag} está online!\n`)
   await client.player.extractors.register(AttachmentExtractor, {})
   await refreshCommands({ client })
+
+  try {
+    await syncPanels(client)
+    console.log("[sound-panel] Painéis de sons sincronizados.")
+  } catch (err) {
+    console.error("[sound-panel] Falha ao sincronizar painéis no startup:", err)
+  }
 })
 
 client.on("interactionCreate", (interaction) => {
@@ -103,6 +112,14 @@ function identificarPalavrasChave(texto: string): string[] {
 
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return
+
+  // Upload de sons para o Drive (canais configurados em pituimSounds)
+  try {
+    await handleUpload(message, client)
+  } catch (err) {
+    console.error("[upload] Erro:", err)
+  }
+
   const canalMusica = process.env.canalMusica
   if (!canalMusica || message.channel.id !== canalMusica) return
 

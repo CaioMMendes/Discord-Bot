@@ -5,3 +5,10 @@ export const config = () => {
 
   return { prefix, token, clientId };
 };
+
+// IDs dos canais do painel de sons (suporta vários, separados por vírgula)
+export const getSoundChannels = (): string[] =>
+  (process.env.pituimSounds ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);

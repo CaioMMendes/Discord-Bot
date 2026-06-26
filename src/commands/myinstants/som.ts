@@ -10,6 +10,7 @@ import {
   AudioPlayerStatus,
   AudioPlayerError,
   getVoiceConnection,
+  VoiceConnection,
 } from "discord-voip";
 import {
   AutocompleteInteraction,
@@ -37,7 +38,7 @@ interface MyInstantsResult {
   sound: string;
 }
 
-function fetchHtml(url: string, timeoutMs = 2500): Promise<string> {
+function fetchHtml(url: string, timeoutMs = 5000): Promise<string> {
   return new Promise((resolve, reject) => {
     const req = https.get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
       let data = "";
@@ -66,12 +67,13 @@ function parseInstants(html: string): MyInstantsResult[] {
   return sounds.map((sound, i) => ({ name: names[i] ?? sound, sound }));
 }
 
-function fetchStream(url: string): Promise<http.IncomingMessage> {
+function fetchStream(url: string, redirectCount = 0): Promise<http.IncomingMessage> {
   return new Promise((resolve, reject) => {
+    if (redirectCount > 5) return reject(new Error("Muitos redirecionamentos"));
     const get = url.startsWith("https") ? https.get : http.get;
     get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
       if (res.statusCode === 301 || res.statusCode === 302) {
-        fetchStream(res.headers.location!).then(resolve).catch(reject);
+        fetchStream(res.headers.location!, redirectCount + 1).then(resolve).catch(reject);
       } else if (res.statusCode === 200) {
         resolve(res);
       } else {
@@ -79,6 +81,49 @@ function fetchStream(url: string): Promise<http.IncomingMessage> {
       }
     }).on("error", reject);
   });
+}
+
+async function connectToVoice(
+  channelId: string,
+  guildId: string,
+  adapterCreator: any,
+  attempt: number
+): Promise<VoiceConnection> {
+  console.log(`[som] Tentativa ${attempt}: criando joinVoiceChannel...`);
+
+  const connection = joinVoiceChannel({
+    channelId,
+    guildId,
+    adapterCreator,
+    selfDeaf: true,
+  });
+
+  // Log every state transition — key diagnostic info
+  connection.on("stateChange", (oldState, newState) => {
+    console.log(`[som][tentativa ${attempt}] Estado: ${oldState.status} -> ${newState.status}`);
+  });
+
+  // Log the state after 3 seconds — tells us where it's stuck
+  const diagTimer = setTimeout(() => {
+    console.log(
+      `[som][tentativa ${attempt}] Estado aos 3s: "${connection.state.status}" ` +
+      `(Signalling=gateway não respondeu, Connecting=UDP falhou)`
+    );
+  }, 3000);
+
+  try {
+    await entersState(connection, VoiceConnectionStatus.Ready, 20_000);
+    clearTimeout(diagTimer);
+    console.log(`[som][tentativa ${attempt}] Conexão READY!`);
+    return connection;
+  } catch (err: any) {
+    clearTimeout(diagTimer);
+    console.error(
+      `[som][tentativa ${attempt}] Timeout — estado final: "${connection.state.status}" | ${err.message}`
+    );
+    connection.destroy();
+    throw err;
+  }
 }
 
 module.exports = {
@@ -99,18 +144,15 @@ module.exports = {
 
     try {
       const query = encodeURIComponent(termo);
-      const html = await fetchHtml(
-        `https://www.myinstants.com/en/search/?name=${query}`
-      );
-
+      const html = await fetchHtml(`https://www.myinstants.com/en/search/?name=${query}`);
       const instants = parseInstants(html).slice(0, 25);
       const sugestoes = instants.map((item) => ({
         name: item.name.slice(0, 100),
         value: `https://www.myinstants.com${item.sound}`,
       }));
-
       await interaction.respond(sugestoes);
-    } catch {
+    } catch (err: any) {
+      console.error(`[som][autocomplete] Erro: ${err.message}`);
       await interaction.respond([]);
     }
   },
@@ -118,11 +160,14 @@ module.exports = {
   execute: async ({ interaction }: ExecuteType) => {
     if (!interaction.isChatInputCommand()) return;
 
+    console.log(`[som][v4] Iniciado por ${interaction.user.tag} | Node: ${process.version} | Plataforma: ${process.platform}`);
+
     const member = interaction.member as GuildMember;
     const userChannel = member?.voice?.channel;
     const embed = new EmbedBuilder();
 
     const existingConnection = getVoiceConnection(interaction.guildId!);
+    console.log(`[som] Canal do usuário: ${userChannel?.id ?? "nenhum"} | Conexão existente: ${existingConnection ? `sim (${existingConnection.state.status})` : "não"}`);
 
     if (!userChannel && !existingConnection) {
       embed
@@ -137,57 +182,109 @@ module.exports = {
       : `https://www.myinstants.com/media/sounds/${valor.toLowerCase().trim().replace(/ /g, "-")}.mp3`;
 
     const nomeExibido = url.split("/").pop()?.replace(".mp3", "") ?? valor;
+    console.log(`[som] URL: ${url}`);
 
     await interaction.deferReply();
 
-    let connection = existingConnection;
+    let connection: VoiceConnection | undefined = existingConnection;
     let createdConnection = false;
 
     try {
-      const stream = await fetchStream(url);
-
-      if (!connection) {
-        connection = joinVoiceChannel({
-          channelId: userChannel!.id,
-          guildId: interaction.guildId!,
-          adapterCreator: interaction.guild!.voiceAdapterCreator,
-          selfDeaf: true,
-        });
-        createdConnection = true;
+      // Fetch the audio stream first
+      console.log(`[som] Buscando stream de áudio...`);
+      let stream: http.IncomingMessage;
+      try {
+        stream = await fetchStream(url);
+        console.log(`[som] Stream OK — Content-Type: ${stream.headers["content-type"]}`);
+      } catch (fetchErr: any) {
+        console.error(`[som] Falha ao buscar áudio: ${fetchErr.message}`);
+        embed
+          .setTitle(`❌ Não foi possível baixar o áudio.`)
+          .setDescription(`\`${fetchErr.message}\`\nURL: \`${url}\``)
+          .setColor(redColor);
+        return await interaction.editReply({ embeds: [embed] });
       }
 
-      await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
+      // Establish voice connection (with retry)
+      if (!connection) {
+        createdConnection = true;
+        let lastErr: any;
 
-      const resource = createAudioResource(stream, {
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            connection = await connectToVoice(
+              userChannel!.id,
+              interaction.guildId!,
+              interaction.guild!.voiceAdapterCreator,
+              attempt
+            );
+            break; // success
+          } catch (err: any) {
+            lastErr = err;
+            if (attempt < 3) {
+              console.log(`[som] Aguardando 2s antes da próxima tentativa...`);
+              await new Promise((r) => setTimeout(r, 2000));
+            }
+          }
+        }
+
+        if (!connection) {
+          embed
+            .setTitle(`❌ Não foi possível conectar ao canal de voz após 3 tentativas.`)
+            .setDescription(`Estado da última tentativa nos logs. Erro: \`${lastErr?.message}\``)
+            .setColor(redColor);
+          return await interaction.editReply({ embeds: [embed] });
+        }
+      }
+
+      // Play the audio
+      console.log(`[som] Criando AudioResource e Player...`);
+      const resource = createAudioResource(stream!, {
         inputType: StreamType.Arbitrary,
+        inlineVolume: false,
       });
 
       const audioPlayer = createAudioPlayer();
+
+      audioPlayer.on("stateChange", (oldState, newState) => {
+        console.log(`[som][player] ${oldState.status} -> ${newState.status}`);
+      });
+
+      audioPlayer.on("error", (err: AudioPlayerError) => {
+        console.error(`[som][player] Erro: ${err.message}`);
+        if (createdConnection) connection?.destroy();
+      });
+
       connection.subscribe(audioPlayer);
       audioPlayer.play(resource);
 
-      await entersState(audioPlayer, AudioPlayerStatus.Playing, 15_000);
+      try {
+        await entersState(audioPlayer, AudioPlayerStatus.Playing, 15_000);
+        console.log(`[som][player] Reprodução iniciada!`);
+      } catch (playErr: any) {
+        console.error(`[som][player] Timeout aguardando Playing: ${playErr.message}`);
+        if (createdConnection) connection?.destroy();
+        embed
+          .setTitle(`❌ Não foi possível iniciar a reprodução.`)
+          .setDescription(`\`${playErr.message}\``)
+          .setColor(redColor);
+        return await interaction.editReply({ embeds: [embed] });
+      }
 
       embed.setTitle(`🔊 Tocando: **${nomeExibido}**`).setColor(greenColor);
       await interaction.editReply({ embeds: [embed] });
 
       audioPlayer.on(AudioPlayerStatus.Idle, () => {
+        console.log(`[som][player] Reprodução concluída`);
         audioPlayer.stop();
-        if (!createdConnection) return;
-        const hasMembers = userChannel?.members.some((m) => !m.user.bot) ?? false;
-        if (!hasMembers) connection?.destroy();
-      });
-
-      audioPlayer.on("error", (err: AudioPlayerError) => {
-        console.error("[som] AudioPlayer error:", err);
-        if (createdConnection) connection?.destroy();
+        // Do not destroy connection — keep the bot in the channel
       });
     } catch (error: any) {
-      console.error("[som] Erro:", error);
+      console.error(`[som] Erro inesperado: ${error.message}`, error);
       if (createdConnection) connection?.destroy();
       embed
-        .setTitle(`❌ Não foi possível tocar **${nomeExibido}**.`)
-        .setDescription(`Verifique o nome em [myinstants.com](https://www.myinstants.com).`)
+        .setTitle(`❌ Erro ao reproduzir o som.`)
+        .setDescription(`\`${error.message}\``)
         .setColor(redColor);
       return await interaction.editReply({ embeds: [embed] });
     }

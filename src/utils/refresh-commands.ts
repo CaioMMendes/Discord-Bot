@@ -15,20 +15,26 @@ export const refreshCommands = async ({ client }: RefreshCommandsType) => {
 
   try {
     const commandsPath = path.normalize(path.join(__dirname, "..", "commands"));
-    const pattern = commandsPath.replace(/\\/g, "/") + "/**/*.{js,ts}";
+    // Requires at least one subdirectory level — skips stale flat files from old deployments
+    const pattern = commandsPath.replace(/\\/g, "/") + "/*/**/*.{js,ts}";
     const commandFiles: string[] = glob.sync(pattern);
+
+    console.log(`[refresh] Arquivos encontrados (${commandFiles.length}):`);
+    for (const file of commandFiles) {
+      console.log(`  -> ${file}`);
+    }
 
     for (const file of commandFiles) {
       try {
         const command = require(file);
         if (command?.data?.name) {
           if (client.commands.has(command.data.name)) {
-            console.warn(`  Ignorando duplicata: /${command.data.name} (${path.basename(file)})`);
+            console.warn(`  Ignorando duplicata: /${command.data.name} (${file})`);
             continue;
           }
           client.commands.set(command.data.name, command);
           commands.push(command.data.toJSON());
-          console.log(`  /${command.data.name}`);
+          console.log(`  /${command.data.name} <- ${file}`);
         }
       } catch (error) {
         console.warn(`  Aviso: falha ao carregar ${path.basename(file)}:`, (error as Error).message);

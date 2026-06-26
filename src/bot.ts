@@ -5,7 +5,7 @@ import { getVoiceConnection } from "discord-voip"
 import { config } from "./config"
 import { interactions } from "./interactions/interactions"
 import { refreshCommands } from "./utils/refresh-commands"
-import { DefaultExtractors } from "@discord-player/extractor"
+import { AttachmentExtractor } from "@discord-player/extractor"
 
 dotenv.config()
 const { token } = config()
@@ -43,7 +43,7 @@ client.player.events.on("playerStart", (_queue, track) => {
 
 client.once("clientReady", async (e) => {
   console.log(`\n😁 ${e.user.tag} está online!\n`)
-  await client.player.extractors.loadMulti(DefaultExtractors)
+  await client.player.extractors.register(AttachmentExtractor, {})
   await refreshCommands({ client })
 })
 

@@ -4,9 +4,10 @@ import {
   EmbedBuilder,
   GuildMember,
 } from "discord.js"
-import { getVoiceConnection } from "discord-voip"
+import { getVoiceConnection, StreamType } from "discord-voip"
 import { getSoundStream } from "../utils/drive"
 import { playStreamInChannel } from "../utils/play-stream"
+import { normalizeToPcm } from "../utils/normalize-audio"
 import { redColor } from "../utils/colors"
 
 type Args = {
@@ -36,12 +37,15 @@ export async function handleSoundButton({ interaction }: Args): Promise<void> {
 
   try {
     const stream = await getSoundStream(fileId)
+    // Passa pelo loudnorm pra todos os sons saírem no mesmo volume
+    const normalized = normalizeToPcm(stream)
 
     await playStreamInChannel({
       guildId: interaction.guildId!,
       channelId: userChannel?.id,
       adapterCreator: interaction.guild!.voiceAdapterCreator,
-      stream,
+      stream: normalized,
+      inputType: StreamType.Raw,
     })
   } catch (err: any) {
     const notFound = err?.code === 404 || /not found|file not found/i.test(err?.message ?? "")

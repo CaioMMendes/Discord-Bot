@@ -17,6 +17,8 @@ interface PlayStreamOptions {
   channelId?: string
   adapterCreator: any
   stream: Readable
+  /** Tipo do stream de entrada. Padrão: Arbitrary (deixa o discord-voip transcodar). */
+  inputType?: StreamType
 }
 
 async function connectWithRetry(
@@ -53,6 +55,7 @@ export async function playStreamInChannel({
   channelId,
   adapterCreator,
   stream,
+  inputType,
 }: PlayStreamOptions): Promise<void> {
   let connection = getVoiceConnection(guildId)
 
@@ -62,7 +65,7 @@ export async function playStreamInChannel({
   }
 
   const resource = createAudioResource(stream, {
-    inputType: StreamType.Arbitrary,
+    inputType: inputType ?? StreamType.Arbitrary,
     inlineVolume: false,
   })
 

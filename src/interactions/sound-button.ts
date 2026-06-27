@@ -5,9 +5,8 @@ import {
   GuildMember,
 } from "discord.js"
 import { getVoiceConnection, StreamType } from "discord-voip"
-import { getSoundStream } from "../utils/drive"
 import { ensureVoiceConnection, playOnConnection } from "../utils/play-stream"
-import { normalizeToPcm } from "../utils/normalize-audio"
+import { getNormalizedPcm } from "../utils/sound-cache"
 import { redColor } from "../utils/colors"
 
 type Args = {
@@ -46,9 +45,9 @@ export async function handleSoundButton({ interaction }: Args): Promise<void> {
     // Se conectar falhar, não deixa virar unhandled rejection enquanto baixamos.
     connectionPromise.catch(() => {})
 
-    const stream = await getSoundStream(fileId)
-    // Passa pelo loudnorm pra todos os sons saírem no mesmo volume
-    const normalized = normalizeToPcm(stream)
+    // Cache hit: lê o PCM normalizado direto do disco (sem Drive nem ffmpeg).
+    // Miss: baixa do Drive, normaliza e grava no cache pra próxima vez.
+    const normalized = await getNormalizedPcm(fileId)
 
     const { connection, justConnected } = await connectionPromise
     await playOnConnection({

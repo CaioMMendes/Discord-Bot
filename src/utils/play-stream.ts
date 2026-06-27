@@ -60,29 +60,33 @@ export async function playStreamInChannel({
   let connection = getVoiceConnection(guildId)
   const status = connection?.state.status
 
-  // Conexão inexistente OU "morta" (ex: bot desconectado manualmente continua como
-  // Disconnected/Destroyed) → descarta e reconecta do zero.
-  const dead =
-    !connection ||
-    status === VoiceConnectionStatus.Destroyed ||
-    status === VoiceConnectionStatus.Disconnected
-
-  if (dead) {
-    if (connection) {
+  if (!connection || status === VoiceConnectionStatus.Destroyed) {
+    // Sem conexão (ou já destruída) → cria do zero.
+    if (!channelId) throw new Error("Bot não está conectado e nenhum canal de voz foi informado")
+    connection = await connectWithRetry(channelId, guildId, adapterCreator)
+  } else if (status === VoiceConnectionStatus.Disconnected) {
+    // Tirado da sala manualmente: a conexão fica em Disconnected, não some.
+    // rejoin() reaproveita o adapter e re-entra — destruir + joinVoiceChannel
+    // na mesma guild costuma travar, por isso usamos rejoin primeiro.
+    if (!channelId) throw new Error("Bot não está conectado e nenhum canal de voz foi informado")
+    connection.rejoin({ channelId, selfDeaf: true, selfMute: false })
+    try {
+      await entersState(connection, VoiceConnectionStatus.Ready, 20_000)
+    } catch {
+      // rejoin não pegou → último recurso: destrói e recria do zero.
       try {
         connection.destroy()
       } catch {
         /* já destruída */
       }
+      connection = await connectWithRetry(channelId, guildId, adapterCreator)
     }
-    if (!channelId) throw new Error("Bot não está conectado e nenhum canal de voz foi informado")
-    connection = await connectWithRetry(channelId, guildId, adapterCreator)
   } else if (status !== VoiceConnectionStatus.Ready) {
     // Conexão existente ainda conectando — espera ficar pronta antes de tocar.
     try {
-      await entersState(connection!, VoiceConnectionStatus.Ready, 20_000)
+      await entersState(connection, VoiceConnectionStatus.Ready, 20_000)
     } catch {
-      connection!.destroy()
+      connection.destroy()
       if (!channelId) throw new Error("Bot não está conectado e nenhum canal de voz foi informado")
       connection = await connectWithRetry(channelId, guildId, adapterCreator)
     }

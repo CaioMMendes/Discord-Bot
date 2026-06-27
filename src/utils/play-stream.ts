@@ -1,4 +1,4 @@
-import { Readable } from "node:stream"
+import { Readable, PassThrough } from "node:stream"
 import {
   joinVoiceChannel,
   createAudioPlayer,
@@ -46,6 +46,24 @@ async function connectWithRetry(
   throw lastErr instanceof Error ? lastErr : new Error("Falha ao conectar ao canal de voz")
 }
 
+// PCM s16le 48kHz estéreo → 48000 amostras * 2 canais * 2 bytes = 192000 bytes/s
+const PCM_BYTES_PER_SECOND = 192000
+
+/**
+ * Prepende silêncio (PCM Raw) ao início do stream. Quando o bot acabou de
+ * entrar na sala, o Discord descarta os primeiros pacotes de áudio até a fala
+ * (SSRC) ser registrada nos clientes — num som curto isso engole o clipe
+ * inteiro e ele sai mudo. O silêncio carrega esses pacotes de aquecimento.
+ */
+function prependSilence(stream: Readable, ms: number): Readable {
+  const bytes = Math.floor((PCM_BYTES_PER_SECOND * ms) / 1000)
+  const out = new PassThrough()
+  out.write(Buffer.alloc(bytes))
+  stream.on("error", (err) => out.destroy(err))
+  stream.pipe(out)
+  return out
+}
+
 /**
  * Conecta ao canal de voz (reaproveitando conexão existente) e toca o stream.
  * Mantém o bot no canal após terminar.
@@ -60,16 +78,22 @@ export async function playStreamInChannel({
   let connection = getVoiceConnection(guildId)
   const status = connection?.state.status
 
+  // true quando tivemos que (re)entrar na sala agora — usado pra prepender
+  // silêncio e não perder o começo de sons curtos no aquecimento da conexão.
+  let justConnected = false
+
   if (!connection || status === VoiceConnectionStatus.Destroyed) {
     // Sem conexão (ou já destruída) → cria do zero.
     if (!channelId) throw new Error("Bot não está conectado e nenhum canal de voz foi informado")
     connection = await connectWithRetry(channelId, guildId, adapterCreator)
+    justConnected = true
   } else if (status === VoiceConnectionStatus.Disconnected) {
     // Tirado da sala manualmente: a conexão fica em Disconnected, não some.
     // rejoin() reaproveita o adapter e re-entra — destruir + joinVoiceChannel
     // na mesma guild costuma travar, por isso usamos rejoin primeiro.
     if (!channelId) throw new Error("Bot não está conectado e nenhum canal de voz foi informado")
     connection.rejoin({ channelId, selfDeaf: true, selfMute: false })
+    justConnected = true
     try {
       await entersState(connection, VoiceConnectionStatus.Ready, 20_000)
     } catch {
@@ -83,6 +107,7 @@ export async function playStreamInChannel({
     }
   } else if (status !== VoiceConnectionStatus.Ready) {
     // Conexão existente ainda conectando — espera ficar pronta antes de tocar.
+    justConnected = true
     try {
       await entersState(connection, VoiceConnectionStatus.Ready, 20_000)
     } catch {
@@ -90,6 +115,13 @@ export async function playStreamInChannel({
       if (!channelId) throw new Error("Bot não está conectado e nenhum canal de voz foi informado")
       connection = await connectWithRetry(channelId, guildId, adapterCreator)
     }
+  }
+
+  // Conexão recém-criada ainda está "aquecendo": os primeiros pacotes são
+  // descartados pelo Discord. Prependemos silêncio (só faz sentido em PCM Raw)
+  // pra que sons curtos não saiam mudos.
+  if (justConnected && (inputType ?? StreamType.Arbitrary) === StreamType.Raw) {
+    stream = prependSilence(stream, 700)
   }
 
   const resource = createAudioResource(stream, {

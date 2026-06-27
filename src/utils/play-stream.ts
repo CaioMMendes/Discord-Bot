@@ -58,10 +58,34 @@ export async function playStreamInChannel({
   inputType,
 }: PlayStreamOptions): Promise<void> {
   let connection = getVoiceConnection(guildId)
+  const status = connection?.state.status
 
-  if (!connection) {
+  // Conexão inexistente OU "morta" (ex: bot desconectado manualmente continua como
+  // Disconnected/Destroyed) → descarta e reconecta do zero.
+  const dead =
+    !connection ||
+    status === VoiceConnectionStatus.Destroyed ||
+    status === VoiceConnectionStatus.Disconnected
+
+  if (dead) {
+    if (connection) {
+      try {
+        connection.destroy()
+      } catch {
+        /* já destruída */
+      }
+    }
     if (!channelId) throw new Error("Bot não está conectado e nenhum canal de voz foi informado")
     connection = await connectWithRetry(channelId, guildId, adapterCreator)
+  } else if (status !== VoiceConnectionStatus.Ready) {
+    // Conexão existente ainda conectando — espera ficar pronta antes de tocar.
+    try {
+      await entersState(connection!, VoiceConnectionStatus.Ready, 20_000)
+    } catch {
+      connection!.destroy()
+      if (!channelId) throw new Error("Bot não está conectado e nenhum canal de voz foi informado")
+      connection = await connectWithRetry(channelId, guildId, adapterCreator)
+    }
   }
 
   const resource = createAudioResource(stream, {
@@ -75,7 +99,7 @@ export async function playStreamInChannel({
     console.error(`[play-stream] Erro no player: ${err.message}`)
   })
 
-  connection.subscribe(audioPlayer)
+  connection!.subscribe(audioPlayer)
   audioPlayer.play(resource)
 
   await entersState(audioPlayer, AudioPlayerStatus.Playing, 15_000)

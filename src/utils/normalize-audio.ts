@@ -4,14 +4,17 @@ import ffmpegStatic from "ffmpeg-static"
 
 const ffmpegPath = (ffmpegStatic as unknown as string) || "ffmpeg"
 
-// Alvo de loudness padrão (EBU R128). I = loudness integrado em LUFS,
-// TP = true peak máximo, LRA = faixa de loudness.
-const LOUDNORM_FILTER = "loudnorm=I=-16:TP=-1.5:LRA=11"
+// Normalização dinâmica, quadro a quadro. Diferente do `loudnorm`, não tem
+// lookahead grande — começa a soltar áudio na hora, o que evita o primeiro som
+// sair mudo e funciona bem com clipes curtos (memes).
+//   f = tamanho do quadro (ms)   g = suavização entre quadros
+//   p = pico-alvo (0..1)         m = ganho máximo (boost dos sons baixinhos)
+const NORMALIZE_FILTER = "dynaudnorm=f=150:g=15:p=0.9:m=15"
 
 /**
  * Recebe um stream de áudio em qualquer formato e devolve PCM s16le 48kHz
- * estéreo com `loudnorm` aplicado — sons estourados são abaixados e os
- * baixinhos levantados, todos saindo no mesmo volume.
+ * estéreo com volume normalizado — sons estourados são abaixados e os
+ * baixinhos levantados, todos saindo num volume parecido.
  *
  * O resultado deve ser tocado com `StreamType.Raw`.
  */
@@ -20,7 +23,7 @@ export function normalizeToPcm(input: Readable): Readable {
     ffmpegPath,
     [
       "-i", "pipe:0",
-      "-af", LOUDNORM_FILTER,
+      "-af", NORMALIZE_FILTER,
       "-f", "s16le",
       "-ar", "48000",
       "-ac", "2",

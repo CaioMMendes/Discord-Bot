@@ -6,7 +6,7 @@ import {
 } from "discord.js"
 import { getVoiceConnection, StreamType } from "discord-voip"
 import { getSoundStream } from "../utils/drive"
-import { playStreamInChannel } from "../utils/play-stream"
+import { ensureVoiceConnection, playOnConnection } from "../utils/play-stream"
 import { normalizeToPcm } from "../utils/normalize-audio"
 import { redColor } from "../utils/colors"
 
@@ -36,14 +36,24 @@ export async function handleSoundButton({ interaction }: Args): Promise<void> {
   await interaction.deferUpdate()
 
   try {
+    // Conecta na call em paralelo com o download/normalização do som — o
+    // handshake de voz (lento no 1º clique) fica escondido atrás do fetch.
+    const connectionPromise = ensureVoiceConnection({
+      guildId: interaction.guildId!,
+      channelId: userChannel?.id,
+      adapterCreator: interaction.guild!.voiceAdapterCreator,
+    })
+    // Se conectar falhar, não deixa virar unhandled rejection enquanto baixamos.
+    connectionPromise.catch(() => {})
+
     const stream = await getSoundStream(fileId)
     // Passa pelo loudnorm pra todos os sons saírem no mesmo volume
     const normalized = normalizeToPcm(stream)
 
-    await playStreamInChannel({
-      guildId: interaction.guildId!,
-      channelId: userChannel?.id,
-      adapterCreator: interaction.guild!.voiceAdapterCreator,
+    const { connection, justConnected } = await connectionPromise
+    await playOnConnection({
+      connection,
+      justConnected,
       stream: normalized,
       inputType: StreamType.Raw,
     })

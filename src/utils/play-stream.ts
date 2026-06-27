@@ -11,13 +11,29 @@ import {
   VoiceConnection,
 } from "discord-voip"
 
-interface PlayStreamOptions {
+interface EnsureConnectionOptions {
   guildId: string
   /** Canal de voz onde tocar (necessário se o bot ainda não estiver conectado). */
   channelId?: string
   adapterCreator: any
+}
+
+export interface VoiceConnectionResult {
+  connection: VoiceConnection
+  /** true quando tivemos que (re)entrar na sala agora — a conexão ainda está "aquecendo". */
+  justConnected: boolean
+}
+
+interface PlayOnConnectionOptions {
+  connection: VoiceConnection
+  justConnected: boolean
   stream: Readable
   /** Tipo do stream de entrada. Padrão: Arbitrary (deixa o discord-voip transcodar). */
+  inputType?: StreamType
+}
+
+interface PlayStreamOptions extends EnsureConnectionOptions {
+  stream: Readable
   inputType?: StreamType
 }
 
@@ -65,21 +81,17 @@ function prependSilence(stream: Readable, ms: number): Readable {
 }
 
 /**
- * Conecta ao canal de voz (reaproveitando conexão existente) e toca o stream.
- * Mantém o bot no canal após terminar.
+ * Garante uma conexão de voz pronta na sala (reaproveitando a existente).
+ * Pode ser chamada em paralelo com o preparo do áudio pra esconder a latência
+ * do handshake de voz atrás do download/normalização do som.
  */
-export async function playStreamInChannel({
+export async function ensureVoiceConnection({
   guildId,
   channelId,
   adapterCreator,
-  stream,
-  inputType,
-}: PlayStreamOptions): Promise<void> {
+}: EnsureConnectionOptions): Promise<VoiceConnectionResult> {
   let connection = getVoiceConnection(guildId)
   const status = connection?.state.status
-
-  // true quando tivemos que (re)entrar na sala agora — usado pra prepender
-  // silêncio e não perder o começo de sons curtos no aquecimento da conexão.
   let justConnected = false
 
   if (!connection || status === VoiceConnectionStatus.Destroyed) {
@@ -117,6 +129,18 @@ export async function playStreamInChannel({
     }
   }
 
+  return { connection, justConnected }
+}
+
+/**
+ * Toca o stream numa conexão já garantida. Mantém o bot no canal após terminar.
+ */
+export async function playOnConnection({
+  connection,
+  justConnected,
+  stream,
+  inputType,
+}: PlayOnConnectionOptions): Promise<void> {
   // Conexão recém-criada ainda está "aquecendo": os primeiros pacotes são
   // descartados pelo Discord. Prependemos silêncio (só faz sentido em PCM Raw)
   // pra que sons curtos não saiam mudos.
@@ -135,7 +159,7 @@ export async function playStreamInChannel({
     console.error(`[play-stream] Erro no player: ${err.message}`)
   })
 
-  connection!.subscribe(audioPlayer)
+  connection.subscribe(audioPlayer)
   audioPlayer.play(resource)
 
   await entersState(audioPlayer, AudioPlayerStatus.Playing, 15_000)
@@ -144,4 +168,23 @@ export async function playStreamInChannel({
     audioPlayer.stop()
     // Não destrói a conexão — mantém o bot no canal
   })
+}
+
+/**
+ * Conecta ao canal de voz (reaproveitando conexão existente) e toca o stream.
+ * Mantém o bot no canal após terminar.
+ */
+export async function playStreamInChannel({
+  guildId,
+  channelId,
+  adapterCreator,
+  stream,
+  inputType,
+}: PlayStreamOptions): Promise<void> {
+  const { connection, justConnected } = await ensureVoiceConnection({
+    guildId,
+    channelId,
+    adapterCreator,
+  })
+  await playOnConnection({ connection, justConnected, stream, inputType })
 }

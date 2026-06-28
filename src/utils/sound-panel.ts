@@ -73,9 +73,8 @@ function buildPages(sounds: DriveSound[]): PanelPage[] {
 
     const embed = new EmbedBuilder()
       .setTitle(title)
-      .setDescription("Clique em um botão para o Pituim entrar na sala e tocar o som.")
       .setColor(zincColor)
-      .setFooter({ text: `${PANEL_MARKER} • ${sounds.length} som(ns)` })
+      .setFooter({ text: PANEL_MARKER })
 
     return { embeds: [embed], components: rows }
   })

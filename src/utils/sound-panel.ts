@@ -10,6 +10,7 @@ import {
 } from "discord.js"
 import { getSoundChannels } from "../config"
 import { DriveSound, listSounds } from "./drive"
+import { getPrivateMap, prunePrivateMap } from "./private-sounds"
 import { zincColor } from "./colors"
 
 // Marcador usado pra reconhecer as mensagens-painel do bot (no rodapé do embed)
@@ -44,7 +45,7 @@ function buildPages(sounds: DriveSound[]): PanelPage[] {
     const embed = new EmbedBuilder()
       .setTitle("🔊 Sons do Pituim")
       .setDescription(
-        "Nenhum som ainda.\nEnvie um arquivo de áudio com a palavra **upload** na mensagem para adicionar."
+        "Nenhum som ainda.\nEnvie um arquivo de áudio com a palavra **upload** para adicionar (ou **upload-privado** para um som visível só neste servidor)."
       )
       .setColor(zincColor)
       .setFooter({ text: PANEL_MARKER })
@@ -148,6 +149,11 @@ export async function syncPanels(client: Client): Promise<void> {
 
   const sounds = await listSounds()
 
+  // Reconcilia o JSON de sons privados com o que realmente existe no Drive:
+  // arquivos deletados/inexistentes saem do mapa (fonte de verdade da privacidade).
+  prunePrivateMap(new Set(sounds.map((s) => s.id)))
+  const privateMap = getPrivateMap()
+
   for (const channelId of channelIds) {
     try {
       const channel = await client.channels.fetch(channelId)
@@ -155,7 +161,12 @@ export async function syncPanels(client: Client): Promise<void> {
         console.warn(`[sound-panel] Canal ${channelId} não é um canal de texto válido`)
         continue
       }
-      await syncChannelPanel(channel as TextChannel, botId, sounds)
+      const textChannel = channel as TextChannel
+      // Públicos aparecem em todos os canais; privados só no servidor dono.
+      const visible = sounds.filter(
+        (s) => !privateMap[s.id] || privateMap[s.id] === textChannel.guildId
+      )
+      await syncChannelPanel(textChannel, botId, visible)
     } catch (err) {
       console.error(`[sound-panel] Erro ao sincronizar canal ${channelId}:`, err)
     }

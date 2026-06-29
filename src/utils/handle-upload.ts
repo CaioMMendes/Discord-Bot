@@ -1,6 +1,7 @@
 import { Client, Message, TextChannel } from "discord.js"
 import { getSoundChannels } from "../config"
 import { uploadSound } from "./drive"
+import { markPrivate } from "./private-sounds"
 import { syncPanels } from "./sound-panel"
 
 const AUDIO_EXTENSIONS = [
@@ -32,7 +33,8 @@ async function sendTemp(channel: TextChannel, content: string, ms = 8000): Promi
 
 /**
  * Processa mensagens dos canais de sons. O canal é "somente painel":
- * - audio + palavra "upload" → sobe pro Drive; ao dar certo, apaga a mensagem
+ * - audio + palavra "upload" → sobe pro Drive (som público, aparece em todos os servidores)
+ * - audio + "upload-privado" → sobe pro Drive como privado (botão só no servidor atual)
  * - qualquer outra mensagem → é apagada para manter só o painel
  */
 export async function handleUpload(message: Message, client: Client): Promise<void> {
@@ -40,7 +42,8 @@ export async function handleUpload(message: Message, client: Client): Promise<vo
   if (!getSoundChannels().includes(message.channel.id)) return
 
   const channel = message.channel as TextChannel
-  const hasUploadWord = /\bupload\b/i.test(message.content)
+  const isPrivate = /\bupload-privado\b/i.test(message.content)
+  const hasUploadWord = isPrivate || /\bupload\b/i.test(message.content)
   const audioAttachments = [...message.attachments.values()].filter((a) =>
     isAudio(a.name, a.contentType)
   )
@@ -65,6 +68,7 @@ export async function handleUpload(message: Message, client: Client): Promise<vo
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const buffer = Buffer.from(await res.arrayBuffer())
       const saved = await uploadSound(attachment.name, attachment.contentType ?? "", buffer)
+      if (isPrivate && message.guildId) markPrivate(saved.id, message.guildId)
       added.push(saved.name)
     } catch (err: any) {
       console.error(`[upload] Falha em ${attachment.name}:`, err?.message ?? err)
@@ -80,6 +84,9 @@ export async function handleUpload(message: Message, client: Client): Promise<vo
     }
     // Sucesso → apaga a mensagem de upload (canal volta a ter só o painel)
     await message.delete().catch(() => {})
+    if (isPrivate) {
+      await sendTemp(channel, `🔒 Som privado adicionado (visível só neste servidor): ${added.join(", ")}`)
+    }
     if (failed.length > 0) {
       await sendTemp(channel, `⚠️ Não consegui subir: ${failed.join(", ")}`)
     }

@@ -2,9 +2,11 @@
 
 name: Fly Deploy
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:   # roda só manualmente (aba Actions > Run workflow)
+  # Deploy automático no push desativado. Como era antes:
+  # push:
+  #   branches:
+  #     - main
 jobs:
   deploy:
     name: Deploy app
